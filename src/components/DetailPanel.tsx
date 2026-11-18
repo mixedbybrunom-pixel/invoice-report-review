@@ -57,7 +57,7 @@ export function DetailPanel({ record, resolution, onClose, onResolve, onReopen, 
   return (
     <>
       <div onClick={onClose} className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-[2px] animate-fade-in" />
-      <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-line bg-surface shadow-pop animate-slide-in-right">
+      <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-line bg-surface shadow-pop animate-slide-in-right">
         <header className="flex items-center gap-2 border-b border-line px-6 py-4">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-bold uppercase tracking-wider text-ink-2">Invoice</p>
@@ -174,17 +174,17 @@ export function DetailPanel({ record, resolution, onClose, onResolve, onReopen, 
                 {resolution?.reason && <p className="mt-1 font-medium text-ink">{resolution.reason}</p>}
                 {resolution?.note && <p className="mt-1 text-ink-3">{resolution.note}</p>}
               </div>
-              <button onClick={async () => { setSaving(true); try { await onReopen(record); } finally { setSaving(false); } }} disabled={saving} className="btn-secondary h-9 w-full text-xs">
+              <button onClick={async () => { setSaving(true); try { await onReopen(record); } finally { setSaving(false); } }} disabled={saving} className="btn-secondary h-11 w-full text-sm">
                 <RotateCcw className="h-4 w-4" /> Reopen for review
               </button>
             </div>
           ) : composing ? (
             <div className="space-y-2">
-              <label className="block text-[11px] font-bold text-ink-2" htmlFor="resolve-reason">
+              <label className="block text-sm font-bold text-ink-2" htmlFor="resolve-reason">
                 Resolution
               </label>
               <ResolutionPicker label="Resolution" value={reason} onChange={setReason} placement="top" />
-              <label className="block text-[11px] font-bold text-ink-2" htmlFor="resolve-note">
+              <label className="block text-sm font-bold text-ink-2" htmlFor="resolve-note">
                 {reason === OTHER_RESOLUTION_REASON ? 'Please describe the resolution' : 'Additional note (optional)'}
               </label>
               <textarea
@@ -195,13 +195,13 @@ export function DetailPanel({ record, resolution, onClose, onResolve, onReopen, 
                 onChange={(e) => setNote(e.target.value)}
                 required={reason === OTHER_RESOLUTION_REASON}
                 placeholder={reason === OTHER_RESOLUTION_REASON ? 'Describe what was done' : 'Add any helpful context'}
-                className="field resize-none py-1.5 text-xs"
+                className="field resize-none py-2 text-[15px]"
               />
               <div className="flex gap-2">
-                <button onClick={() => { setComposing(false); setReason(''); setNote(''); }} disabled={saving} className="btn-secondary h-9 flex-1 text-xs">
+                <button onClick={() => { setComposing(false); setReason(''); setNote(''); }} disabled={saving} className="btn-secondary h-11 flex-1 text-sm">
                   Cancel
                 </button>
-                <button onClick={submitResolve} disabled={saving || !reason || (reason === OTHER_RESOLUTION_REASON && !note.trim())} className="btn-secondary h-9 flex-1 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-500/10">
+                <button onClick={submitResolve} disabled={saving || !reason || (reason === OTHER_RESOLUTION_REASON && !note.trim())} className="btn-secondary h-11 flex-1 text-sm border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-500/10">
                   <Check className="h-4 w-4" /> {saving ? 'Saving…' : 'Confirm'}
                 </button>
               </div>
