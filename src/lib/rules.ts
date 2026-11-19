@@ -6,6 +6,9 @@ export const HISTORY_LIMIT = 30;
 export const DRIVER_CONFIDENCE_THRESHOLD = 60;
 export const DRIVER_MIN_SAMPLE = 5;
 
+// Matches "drop ship" however it is typed: dropship, drop-ship, drop_ship, drop shipment, dropshipping,
+// and common slips such as dropshp, drp ship, dop ship, dropp ship or drop sihp.
+export const DROPSHIP_PATTERN = /\b(?:dr?[oa]p{1,2}|drp|dro)[\s_\-./]*s[hi]{1,2}p/i;
 export const REDELIVERY_PATTERN = /re.?load|re.?d[ei]?l[il]?[iy]?v[ea]?r?[yi]?/i;
 
 export const INVOICE_RULES = {

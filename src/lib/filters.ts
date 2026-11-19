@@ -12,6 +12,7 @@ import {
   Scale,
   ShieldAlert,
   Truck,
+  PackageCheck,
   Undo2,
   UserX,
   Users,
@@ -35,6 +36,7 @@ export type FilterKey =
   | 'repairs'
   | 'cclinternal'
   | 'redelivery'
+  | 'dropship'
   | 'multidriver'
   | 'driverunusual'
   | 'ambiguous'
@@ -64,6 +66,7 @@ export const FILTERS: FilterDef[] = [
   { key: 'repairs', label: 'For repairs', description: 'Repair jobs', icon: Wrench, text: 'text-teal-600 dark:text-teal-400', chip: 'bg-teal-50 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400' },
   { key: 'cclinternal', label: 'CCL internal', description: 'Internal CCL accounts', icon: Building2, text: 'text-sky-600 dark:text-sky-400', chip: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400' },
   { key: 'redelivery', label: 'Redeliveries', description: 'Details mention a redelivery', icon: Truck, text: 'text-violet-600 dark:text-violet-400', chip: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400' },
+  { key: 'dropship', label: 'Drop shipments', description: 'Needs your confirmation each time', icon: PackageCheck, text: 'text-indigo-600 dark:text-indigo-400', chip: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400' },
   { key: 'multidriver', label: 'Multi-driver address', description: 'Account or address served by several drivers', icon: Users, text: 'text-cyan-700 dark:text-cyan-400', chip: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-400' },
   { key: 'driverunusual', label: 'Unusual driver', description: 'Driver differs from the usual one', icon: UserX, text: 'text-sky-600 dark:text-sky-400', chip: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400' },
   { key: 'ambiguous', label: 'Unclear territory', description: 'Tied territory in the master file', icon: HelpCircle, text: 'text-violet-600 dark:text-violet-400', chip: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400' },
@@ -98,6 +101,7 @@ export function matchesFilter(r: ValidatedRecord, key: FilterKey, res: Resolutio
     case 'repairs': return r.primaryCls === 'repairs';
     case 'cclinternal': return r.isCCLAccount;
     case 'redelivery': return r.isRedelivery;
+    case 'dropship': return r.isDropship;
     case 'multidriver': return has('multidriver');
     case 'driverunusual': return r.isDriverUnusual;
     case 'ambiguous': return r.isAmbiguous;
@@ -131,6 +135,7 @@ export const STATUS_LABEL: Record<string, string> = {
   cclinternal: 'CCL internal',
   multidriver: 'Multi-driver',
   redelivery: 'Redelivery',
+  dropship: 'Drop shipment',
   driverinfo: 'Unusual driver',
   noterritory: 'No territory',
 };
@@ -153,6 +158,7 @@ export const BADGE_CLASS: Record<string, string> = {
   cclinternal: 'bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-400/30',
   multidriver: 'bg-cyan-50 text-cyan-800 ring-cyan-600/20 dark:bg-cyan-500/15 dark:text-cyan-300 dark:ring-cyan-400/30',
   redelivery: 'bg-violet-50 text-violet-700 ring-violet-600/20 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-400/30',
+  dropship: 'bg-indigo-50 text-indigo-700 ring-indigo-600/20 dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-indigo-400/30',
   driverinfo: 'bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-400/30',
   noterritory: 'bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-400/30',
 };
@@ -173,4 +179,5 @@ export const ROW_TINT: Record<string, string> = {
   suspectweight: 'bg-red-50/60 dark:bg-white/[0.018]',
   multidriver: 'bg-cyan-50/60 dark:bg-white/[0.018]',
   redelivery: 'bg-violet-50/60 dark:bg-white/[0.018]',
+  dropship: 'bg-indigo-50/60 dark:bg-white/[0.018]',
 };

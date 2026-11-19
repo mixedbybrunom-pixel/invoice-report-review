@@ -10,7 +10,7 @@ import { fetchResolutionEvents, fetchResolutions, saveResolutions } from '@/lib/
 import { MASTER_POLL_INTERVAL_MS } from '@/lib/rules';
 import type { MasterData, RawRow, Resolution, ResolutionEvent, ValidatedRecord } from '@/lib/types';
 import { Sidebar } from '@/components/Sidebar';
-import { StatCards } from '@/components/StatCards';
+import { LiveFixesCard, type LiveFix } from '@/components/LiveFixesCard';
 import { RecordTable } from '@/components/RecordTable';
 import { DetailPanel } from '@/components/DetailPanel';
 import { UploadZone } from '@/components/UploadZone';
@@ -26,6 +26,7 @@ import { AddReviewerDialog } from '@/components/AddReviewerDialog';
 import { ReviewActivityDialog } from '@/components/ReviewActivityDialog';
 import { ResolutionPicker } from '@/components/ResolutionPicker';
 import { supabase } from '@/lib/supabase';
+import { publishAccountEdit } from '@/lib/masterSync';
 
 export default function App() {
   const [rows, setRows] = useState<RawRow[] | null>(null);
@@ -39,7 +40,7 @@ export default function App() {
   const [sessionMaster, setSessionMaster] = useState<MasterData | null>(null);
   const [masterStatus, setMasterStatus] = useState<'loading' | 'ready' | 'offline'>('loading');
   const [masterOpen, setMasterOpen] = useState(false);
-  const [masterView, setMasterView] = useState<'search' | 'manage'>('search');
+  const [masterView, setMasterView] = useState<'search' | 'accounts' | 'manage'>('search');
   const [pushOpen, setPushOpen] = useState(false);
   const [pushPreselect, setPushPreselect] = useState<string[]>([]);
   const [uploadKey, setUploadKey] = useState('');
@@ -49,6 +50,7 @@ export default function App() {
   const [resolutionEvents, setResolutionEvents] = useState<ResolutionEvent[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [liveFeed, setLiveFeed] = useState<LiveFix[]>([]);
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [membershipChecked, setMembershipChecked] = useState(false);
@@ -152,6 +154,8 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => { setLiveFeed([]); }, [reportId]);
+
   useEffect(() => {
     if (!reportId || !session || !isMember) {
       setResolutions({});
@@ -208,19 +212,22 @@ export default function App() {
           return next;
         });
         if (incoming.actorEmail.toLowerCase() !== (session.user.email ?? '').toLowerCase()) {
-          const subject = record
-            ? `${record.customer} · account ${record.account}`
-            : `Invoice ${incoming.invoiceNo}`;
-          const title = incoming.action === 'resolved'
-            ? `Invoice ${incoming.invoiceNo} resolved`
-            : `Invoice ${incoming.invoiceNo} reopened`;
-          const details = [incoming.actorEmail, subject, incoming.reason, incoming.note].filter(Boolean).join(' · ');
-          notify(title, 'success', details, 30_000);
+          setLiveFeed((previous) => previous.some((f) => f.id === `e${incoming.id}`) ? previous : [{
+            id: `e${incoming.id}`,
+            invoiceNo: incoming.invoiceNo,
+            customer: record?.customer ?? '',
+            account: record?.account ?? '',
+            action: incoming.action,
+            reason: incoming.reason,
+            note: incoming.note,
+            actor: incoming.actorEmail,
+            at: incoming.occurredAt,
+          }, ...previous].slice(0, 200));
         }
       })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [reportId, session, isMember, activityLoading, records, notify]);
+  }, [reportId, session, isMember, activityLoading, records]);
 
   const handleFile = async (file: File) => {
     setIsReading(true);
@@ -259,6 +266,26 @@ export default function App() {
       addedCount ? `Added ${addedCount.toLocaleString()} new accounts to the master file` : 'The master file already had these accounts',
       'success',
     );
+  };
+
+  const markAccountDropship = async (record: ValidatedRecord) => {
+    const account = normalizeAccountKey(record.account);
+    const territory = serverMaster.territory[account];
+    if (!territory) { notify('Push this account to the master file first, then mark it as drop-ship.', 'error'); return; }
+    if (!uploadKey.trim()) { notify('Enter the upload key first (Master file, then Manage accounts).', 'error'); return; }
+    const info = serverMaster.accountInfo[account];
+    try {
+      const { after } = await publishAccountEdit(
+        account,
+        { customer: info?.customer ?? record.customer, address: info?.address ?? '', territory, dropship: true },
+        uploadKey.trim(),
+      );
+      setServerMaster(after);
+      setSessionMaster(null);
+      notify(`Account ${account} is now marked as drop-ship`, 'success');
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Could not mark that account as drop-ship.', 'error');
+    }
   };
 
   const openPushDialog = (accounts: string[]) => {
@@ -314,8 +341,7 @@ export default function App() {
   const resolveRecord = async (record: ValidatedRecord, reason: string, note: string) => {
     const saved = await setResolution([record], 'resolved', reason, note);
     if (saved) {
-      const detail = [session?.user.email, `${record.customer} · account ${record.account}`, reason, note].filter(Boolean).join(' · ');
-      notify(`Invoice ${record.invoiceNo} resolved`, 'success', detail, 30_000);
+      notify(`Invoice ${record.invoiceNo} resolved`, 'success', reason);
     }
     return saved;
   };
@@ -338,10 +364,7 @@ export default function App() {
     if (!bulkReason || (bulkReason === OTHER_RESOLUTION_REASON && !bulkNote.trim())) return;
     const saved = await setResolution(selectedRecords, 'resolved', bulkReason, bulkNote.trim());
     if (saved) {
-      for (const record of selectedRecords) {
-        const detail = [session?.user.email, `${record.customer} · account ${record.account}`, bulkReason, bulkNote.trim()].filter(Boolean).join(' · ');
-        notify(`Invoice ${record.invoiceNo} resolved`, 'success', detail, 30_000);
-      }
+      notify(`${selectedRecords.length} ${selectedRecords.length === 1 ? 'invoice' : 'invoices'} resolved`, 'success', bulkReason);
       setChecked(new Set());
       setBulkReason('');
       setBulkNote('');
@@ -378,7 +401,8 @@ export default function App() {
         hasReport={!!rows}
         fileName={fileName}
         onNewReport={() => document.getElementById('report-file-input')?.click()}
-        onOpenMaster={() => { setMasterView('manage'); setMasterOpen(true); }}
+        isAdmin={isAdmin}
+        onOpenMaster={() => { setMasterView('accounts'); setMasterOpen(true); }}
         onOpenAccountSearch={() => { setMasterView('search'); setMasterOpen(true); }}
       />
 
@@ -429,8 +453,6 @@ export default function App() {
             <UploadZone onFile={handleFile} busy={isReading} error={loadError} />
           ) : (
             <>
-              <StatCards counts={counts} active={filter} onSelect={changeFilter} />
-
               <div className="flex flex-wrap items-center gap-3">
                 <label className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-medium text-ink-2">
                   <input type="checkbox" checked={groupByAccount} onChange={(event) => setGroupByAccount(event.target.checked)} className="h-4 w-4 cursor-pointer accent-accent" />
@@ -447,7 +469,10 @@ export default function App() {
                 <span className="text-xs text-ink-3">
                   Showing {visible.length.toLocaleString()} of {records.length.toLocaleString()}
                 </span>
-                {filter === 'unknownaccount' && unknownAccounts.length > 0 && (
+                {filter === 'unknownaccount' && unknownAccounts.length > 0 && !isAdmin && (
+                  <span className="text-sm text-ink-3">Only the admin can add accounts to the master file.</span>
+                )}
+                {isAdmin && filter === 'unknownaccount' && unknownAccounts.length > 0 && (
                   <button onClick={pushAccountsFromChecked} className="btn-primary h-10" title="Add these accounts to the master file">
                     <CloudUpload className="h-4 w-4" />
                     Push account{unknownAccounts.length === 1 ? '' : 's'} to master file
@@ -494,7 +519,9 @@ export default function App() {
         onClose={() => setSelectedId(null)}
         onResolve={resolveRecord}
         onReopen={reopenRecord}
-        onPushAccount={(record) => openPushDialog([normalizeAccountKey(record.account)])}
+        onPushAccount={isAdmin ? (record) => openPushDialog([normalizeAccountKey(record.account)]) : undefined}
+        onMarkDropship={isAdmin ? markAccountDropship : undefined}
+        canMarkDropship={!!selected && normalizeAccountKey(selected.account) in serverMaster.territory}
       />
 
       <input
@@ -519,7 +546,12 @@ export default function App() {
       {masterOpen && (
         <MasterModal
           master={master}
+          serverMaster={serverMaster}
+          isAdmin={isAdmin}
           initialTab={masterView}
+          uploadKey={uploadKey}
+          onUploadKeyChange={setUploadKey}
+          onMasterChanged={(data, message) => { setServerMaster(data); setSessionMaster(null); setMasterStatus('ready'); notify(message, 'success'); }}
           onClose={() => setMasterOpen(false)}
           onUseLocal={handleSessionMaster}
           onPublished={handlePublished}
@@ -537,6 +569,7 @@ export default function App() {
           onError={(message) => notify(message, 'error')}
         />
       )}
+      <LiveFixesCard fixes={liveFeed} onClose={() => setLiveFeed([])} />
       <Toaster toasts={toasts} onDismiss={dismiss} />
       {passwordDialogOpen && (
         <SetPasswordDialog

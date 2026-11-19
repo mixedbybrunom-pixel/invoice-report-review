@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, CloudUpload, Copy, RotateCcw, X } from 'lucide-react';
+import { Check, CloudUpload, Copy, PackageCheck, RotateCcw, X } from 'lucide-react';
 import { BADGE_CLASS, STATUS_LABEL, isCleared } from '@/lib/filters';
 import type { Resolution, ValidatedRecord } from '@/lib/types';
 import { OTHER_RESOLUTION_REASON } from '@/lib/resolutionReasons';
@@ -12,9 +12,13 @@ interface DetailPanelProps {
   onResolve: (record: ValidatedRecord, reason: string, note: string) => Promise<boolean>;
   onReopen: (record: ValidatedRecord) => Promise<void>;
   onPushAccount?: (record: ValidatedRecord) => void;
+  /** Admin only. Marks the record's account as a drop-ship account in the master file. */
+  onMarkDropship?: (record: ValidatedRecord) => Promise<void>;
+  /** True when the record's account is in the master file, so it can be marked. */
+  canMarkDropship?: boolean;
 }
 
-export function DetailPanel({ record, resolution, onClose, onResolve, onReopen, onPushAccount }: DetailPanelProps) {
+export function DetailPanel({ record, resolution, onClose, onResolve, onReopen, onPushAccount, onMarkDropship, canMarkDropship }: DetailPanelProps) {
   const [composing, setComposing] = useState(false);
   const [note, setNote] = useState('');
   const [reason, setReason] = useState('');
@@ -120,6 +124,44 @@ export function DetailPanel({ record, resolution, onClose, onResolve, onReopen, 
               <p>This account is not in the master file yet. Push it so future reports recognise it.</p>
               <button onClick={() => onPushAccount(record)} className="btn-secondary mt-3 h-9 text-xs">
                 <CloudUpload className="h-4 w-4" /> Push account to master file
+              </button>
+            </Block>
+          )}
+
+          {record.isDropship && (
+            <Block title="Drop shipment">
+              <p>
+                {record.dropshipSource === 'text'
+                  ? 'The invoice text says drop ship.'
+                  : record.dropshipSource === 'account'
+                    ? 'This account is marked as a drop-ship account.'
+                    : 'This account is marked as drop-ship and the invoice text says drop ship.'}{' '}
+                Any territory is accepted. Please confirm it is a drop shipment, then mark it as resolved.
+              </p>
+              {onMarkDropship && canMarkDropship && record.dropshipSource === 'text' && (
+                <>
+                  <p className="mt-2">Mark this account as drop-ship so it is recognised next time?</p>
+                  <button
+                    onClick={async () => { setSaving(true); try { await onMarkDropship(record); } finally { setSaving(false); } }}
+                    disabled={saving}
+                    className="btn-secondary mt-3 h-9 text-xs"
+                  >
+                    <PackageCheck className="h-4 w-4" /> Mark account as drop-ship
+                  </button>
+                </>
+              )}
+            </Block>
+          )}
+
+          {onMarkDropship && canMarkDropship && !record.isDropship && !record.isCCLAccount && (
+            <Block title="Is this a drop shipment?">
+              <p>If this order is a drop shipment, mark the account. Next time it will be recognised, any territory is accepted, and your team still confirms each one.</p>
+              <button
+                onClick={async () => { setSaving(true); try { await onMarkDropship(record); } finally { setSaving(false); } }}
+                disabled={saving}
+                className="btn-secondary mt-3 h-9 text-xs"
+              >
+                <PackageCheck className="h-4 w-4" /> Mark account as drop-ship
               </button>
             </Block>
           )}

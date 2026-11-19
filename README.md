@@ -1,6 +1,6 @@
 # Invoice Report Review
 
-Version 1.17.0
+Version 1.19.0
 
 Team site: https://ccl-invoice-report-review.netlify.app
 
@@ -51,3 +51,17 @@ Then start the app and check the review flow:
 2. Refresh the page, upload the same report, and confirm its resolution is still there.
 3. Change a row in the report and upload the edited report; it should have a separate review state.
 4. Sign in from another authorized browser profile and confirm the saved resolution is shared.
+
+
+## What's new in 1.19.0
+
+- **Drop shipments need a confirmation every time**: a row is a drop shipment when its account is marked as drop-ship, or when the Details or customer name say drop ship (also catches spellings like dropshp, drp ship, drop-shipment). Any territory is accepted, but the row stays in "Needs action" until someone confirms it with "Drop shipment confirmed".
+- **Mark account as drop-ship (admin)**: a button in the invoice panel marks the account in the master file, so it is recognised next time. Needs the upload key.
+- Unknown accounts are still checked on drop-ship rows.
+
+## What's new in 1.18.0
+- **Team updates card**: when a teammate resolves or reopens an invoice on the same report, a card stays at the bottom-left until you close it. Later fixes are added to it. Your own actions only show a small confirmation.
+- **Admin-only master file controls**: only the admin sees "Manage master file", the Update master tab and the Push-to-master buttons. Reviewers can still search accounts. The upload key remains the real lock on the server.
+- **Manage accounts** (admin): list, search, edit and delete master accounts, with Backup and Undo.
+- **Drop shipments**: rows are treated as drop shipments when the Details or customer name mention "drop ship", or the account is ticked "Drop-ship account" in Manage accounts. They skip territory/driver checks (unknown account is still checked) and appear under "Drop shipments" in the sidebar. New resolution reason: "Drop shipment confirmed".
+- **Stat cards removed**; use the left menu.

@@ -17,6 +17,7 @@ export type IssueClass =
   | 'suspectweight'
   | 'multidriver'
   | 'redelivery'
+  | 'dropship'
   | 'unknownaccount'
   | 'noterritory';
 
@@ -37,6 +38,8 @@ export interface MasterData {
   driverMap: Record<string, DriverShare[]>;
   ambiguousAccounts: string[];
   ambiguousDetail: Record<string, string[]>;
+  /** Accounts that are used for deliveries to other areas, so territory checks are skipped for them. */
+  dropshipAccounts: string[];
 }
 
 export interface Issue {
@@ -99,6 +102,9 @@ export interface ValidatedRecord {
   issues: Issue[];
   isCCLAccount: boolean;
   isRedelivery: boolean;
+  isDropship: boolean;
+  /** Why this row counts as a drop shipment: the account is marked, the text says so, or both. */
+  dropshipSource: 'account' | 'text' | 'both' | null;
   isMismatch: boolean;
   isDriverUnusual: boolean;
   isAmbiguous: boolean;

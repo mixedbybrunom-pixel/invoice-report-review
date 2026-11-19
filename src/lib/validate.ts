@@ -1,6 +1,7 @@
 import {
   DRIVER_CONFIDENCE_THRESHOLD,
   DRIVER_MIN_SAMPLE,
+  DROPSHIP_PATTERN,
   INVOICE_RULES,
   REDELIVERY_PATTERN,
   getCCLLabel,
@@ -77,12 +78,26 @@ interface Prepared {
   territory: string;
   address: string;
   documentId: string;
+  /** Delivered to another area on the customer's behalf (details say drop ship, or the account is a drop-ship account). */
+  dropship: boolean;
+  /** Why the row counts as a drop shipment. */
+  dropshipSource: DropshipSource | null;
+}
+
+type DropshipSource = 'account' | 'text' | 'both';
+
+function dropshipInfo(markedAccount: boolean, textSaysDropship: boolean): { dropship: boolean; dropshipSource: DropshipSource | null } {
+  if (markedAccount && textSaysDropship) return { dropship: true, dropshipSource: 'both' };
+  if (markedAccount) return { dropship: true, dropshipSource: 'account' };
+  if (textSaysDropship) return { dropship: true, dropshipSource: 'text' };
+  return { dropship: false, dropshipSource: null };
 }
 
 export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecord[] {
   const masterLoaded = Object.keys(master.territory).length > 0;
   const hasDriverData = Object.keys(master.driverMap).length > 0;
   const ambiguous = new Set(master.ambiguousAccounts);
+  const dropshipAccounts = new Set(master.dropshipAccounts);
 
   const prepared: (Prepared | null)[] = rows.map((r) => {
     const invoice = text(r['Invoice No']).toUpperCase();
@@ -96,6 +111,10 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
       territory: text(r['Territory']).toUpperCase(),
       address: text(r['Customer Address']).toUpperCase(),
       documentId: text(r['Document ID']) || '-',
+      ...dropshipInfo(
+        dropshipAccounts.has(accountAndCustomer.account),
+        DROPSHIP_PATTERN.test(text(r['Details'])) || DROPSHIP_PATTERN.test(accountAndCustomer.customer),
+      ),
     };
   });
 
@@ -111,7 +130,7 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
   const addressDrivers = new Map<string, Map<string, number>>();
   const addressRecords = new Map<string, { invoice: string; driver: string; account: string }[]>();
   for (const p of prepared) {
-    if (!p || !p.address || !p.driver || isRepairOrInternal(p)) continue;
+    if (!p || !p.address || !p.driver || p.dropship || isRepairOrInternal(p)) continue;
     const drivers = addressDrivers.get(p.address) ?? new Map<string, number>();
     drivers.set(p.driver, (drivers.get(p.driver) ?? 0) + 1);
     addressDrivers.set(p.address, drivers);
@@ -126,7 +145,7 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
   const accountDrivers = new Map<string, Map<string, number>>();
   const accountRecords = new Map<string, { invoice: string; driver: string; address: string }[]>();
   for (const p of prepared) {
-    if (!p || !p.account || !p.driver || isRepairOrInternal(p)) continue;
+    if (!p || !p.account || !p.driver || p.dropship || isRepairOrInternal(p)) continue;
     const drivers = accountDrivers.get(p.account) ?? new Map<string, number>();
     drivers.set(p.driver, (drivers.get(p.driver) ?? 0) + 1);
     accountDrivers.set(p.account, drivers);
@@ -141,7 +160,7 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
   const accountTerritories = new Map<string, Map<string, number>>();
   const accountSplitRecords = new Map<string, { invoice: string; territory: string; driver: string }[]>();
   for (const p of prepared) {
-    if (!p || !p.account || !p.territory || isRepairOrInternal(p) || isCCLAccount(p.account)) continue;
+    if (!p || !p.account || !p.territory || p.dropship || isRepairOrInternal(p) || isCCLAccount(p.account)) continue;
     const counts = accountTerritories.get(p.account) ?? new Map<string, number>();
     counts.set(p.territory, (counts.get(p.territory) ?? 0) + 1);
     accountTerritories.set(p.account, counts);
@@ -187,7 +206,13 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
     let isDriverUnusual = false;
 
     if (!isCCL) {
-      if (ambiguous.has(account)) {
+      if (p.dropship) {
+        // Delivered to another area on purpose, so the territory is not checked. The account itself still must exist.
+        if (masterLoaded && account && !master.territory[account]) {
+          isUnknownAccount = true;
+          add('Unknown Account (not in master)', 'unknownaccount', 55, true);
+        }
+      } else if (ambiguous.has(account)) {
         isAmbiguous = true;
         ambiguousTerritories = master.ambiguousDetail[account] ?? [];
         add('Unclear Territory (tied in master file)', 'ambiguous', 78, true);
@@ -211,7 +236,7 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
         );
       }
 
-      const shares = hasDriverData && account && driver ? master.driverMap[account] : undefined;
+      const shares = hasDriverData && account && driver && !p.dropship ? master.driverMap[account] : undefined;
       if (shares?.length) {
         const sample = shares.reduce((a, s) => a + s.count, 0);
         const top = shares[0];
@@ -246,7 +271,7 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
       if (!territory) add('No Territory', 'noterritory', 45, true);
 
       const splitCounts = accountTerritories.get(account);
-      if (!isCCL && splitCounts && splitCounts.size > 1) {
+      if (!isCCL && !p.dropship && splitCounts && splitCounts.size > 1) {
         add(`Territory Split (${[...splitCounts.keys()].join(' / ')})`, 'split', 70, true);
       }
 
@@ -258,7 +283,7 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
     }
 
     let multiDriver: ValidatedRecord['multiDriver'] = null;
-    if (account && multiDriverAccounts.has(account)) {
+    if (account && !p.dropship && multiDriverAccounts.has(account)) {
       const drivers = toShares(accountDrivers.get(account) ?? new Map());
       add(`Multi-Driver Account (${drivers.length} drivers)`, 'multidriver', 100, true);
       multiDriver = {
@@ -268,7 +293,7 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
           .filter((s) => s.invoice !== invoice)
           .map((s) => ({ invoice: s.invoice, driver: s.driver, address: s.address })),
       };
-    } else if (address && multiDriverAddresses.has(address)) {
+    } else if (address && !p.dropship && multiDriverAddresses.has(address)) {
       const drivers = toShares(addressDrivers.get(address) ?? new Map());
       add(`Multi-Driver Address (${drivers.length} drivers)`, 'multidriver', 101, true);
       multiDriver = {
@@ -282,6 +307,15 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
 
     const isRedelivery = !!details && REDELIVERY_PATTERN.test(details);
     if (isRedelivery) add('Redelivery', 'redelivery', 110, false);
+    if (p.dropship) {
+      const why = p.dropshipSource === 'account'
+        ? 'account is marked as drop-ship'
+        : p.dropshipSource === 'text'
+          ? 'text says drop ship'
+          : 'account is marked and text says drop ship';
+      // Always needs a person to confirm it, even for accounts already marked as drop-ship.
+      add(`Drop shipment, please confirm (${why})`, 'dropship', 35, true);
+    }
 
     const eligible = issues.filter((i) => i.primaryEligible).sort((a, b) => a.priority - b.priority);
     const primary: Issue = eligible[0] ?? { status: 'OK', cls: 'ok', priority: 999, primaryEligible: true };
@@ -321,6 +355,8 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
       issues,
       isCCLAccount: isCCL,
       isRedelivery,
+      isDropship: p.dropship,
+      dropshipSource: p.dropshipSource,
       isMismatch,
       isDriverUnusual,
       isAmbiguous,
