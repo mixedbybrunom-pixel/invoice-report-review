@@ -27,6 +27,7 @@ export const RESOLUTION_REASON_GROUPS = [
     options: [
       'Repair job confirmed',
       'Redelivery confirmed',
+      'Drop shipment confirmed',
       'Driver assignment confirmed',
       'Multiple drivers at this address confirmed',
     ],

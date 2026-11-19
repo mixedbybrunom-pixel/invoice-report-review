@@ -14,16 +14,17 @@ interface SidebarProps {
   onNewReport: () => void;
   onOpenMaster: () => void;
   onOpenAccountSearch: () => void;
+  isAdmin: boolean;
 }
 
 const GROUPS: { title: string; keys: FilterKey[] }[] = [
   { title: 'Workflow', keys: ['all', 'needsaction', 'resolved', 'ok'] },
   { title: 'Invoice checks', keys: ['error', 'suspicious', 'repairs', 'cclinternal', 'zero', 'duplicate', 'weightflag'] },
-  { title: 'Territory and driver', keys: ['mismatch', 'split', 'ambiguous', 'unknownaccount', 'multidriver', 'driverunusual', 'redelivery'] },
+  { title: 'Territory and driver', keys: ['mismatch', 'split', 'ambiguous', 'unknownaccount', 'multidriver', 'driverunusual', 'redelivery', 'dropship'] },
 ];
 
 export function Sidebar(props: SidebarProps) {
-  const { open, onClose, filter, counts, onFilter, masterStatus, masterCount, hasReport, fileName, onNewReport, onOpenMaster, onOpenAccountSearch } = props;
+  const { open, onClose, filter, counts, onFilter, masterStatus, masterCount, hasReport, fileName, onNewReport, onOpenMaster, onOpenAccountSearch, isAdmin } = props;
   const byKey = Object.fromEntries(FILTERS.map((f) => [f.key, f]));
 
   return (
@@ -102,9 +103,11 @@ export function Sidebar(props: SidebarProps) {
               {fileName}
             </div>
           )}
-          <button onClick={onOpenMaster} className="btn-secondary w-full">
-            <Database className="h-4 w-4" /> Master file
-          </button>
+          {isAdmin && (
+            <button onClick={onOpenMaster} className="btn-secondary w-full">
+              <Database className="h-4 w-4" /> Manage master file
+            </button>
+          )}
           <button onClick={onOpenAccountSearch} className="btn-secondary w-full">
             <Search className="h-4 w-4" /> Search accounts
           </button>

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
-import { CloudUpload, FileSpreadsheet, KeyRound, Loader2, Search } from 'lucide-react';
+import { CloudUpload, Database, FileSpreadsheet, KeyRound, Loader2, Search } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
+import { MasterAccountsPanel } from '@/components/MasterAccountsPanel';
 import { aggregateMasterRows, masterAccountCount } from '@/lib/master';
 import { readTable } from '@/lib/workbook';
 import { publishAdditions } from '@/lib/masterSync';
@@ -9,7 +10,13 @@ import { normalizeAccountKey } from '@/lib/rules';
 
 interface MasterModalProps {
   master: MasterData;
-  initialTab: 'search' | 'manage';
+  /** The master file as the server has it (the accounts manager edits this). */
+  serverMaster: MasterData;
+  isAdmin: boolean;
+  initialTab: 'search' | 'accounts' | 'manage';
+  uploadKey: string;
+  onUploadKeyChange: (key: string) => void;
+  onMasterChanged: (master: MasterData, message: string) => void;
   onClose: () => void;
   onUseLocal: (master: MasterData, fileName: string) => void;
   onPublished: (master: MasterData, addedCount: number) => void;
@@ -18,14 +25,13 @@ interface MasterModalProps {
 
 const MASTER_REQUIRED = ['Customer', 'Territory'] as const;
 
-export function MasterModal({ master, initialTab, onClose, onUseLocal, onPublished, onError }: MasterModalProps) {
+export function MasterModal({ master, serverMaster, isAdmin, initialTab, uploadKey, onUploadKeyChange, onMasterChanged, onClose, onUseLocal, onPublished, onError }: MasterModalProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [tab, setTab] = useState<'search' | 'manage'>(initialTab);
+  const [tab, setTab] = useState<'search' | 'accounts' | 'manage'>(isAdmin || initialTab === 'search' ? initialTab : 'search');
   const [query, setQuery] = useState('');
   const [local, setLocal] = useState<{ data: MasterData; fileName: string } | null>(null);
   const [reading, setReading] = useState(false);
   const [readError, setReadError] = useState<string | null>(null);
-  const [uploadKey, setUploadKey] = useState('');
   const [publishing, setPublishing] = useState(false);
   const matches = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -77,11 +83,11 @@ export function MasterModal({ master, initialTab, onClose, onUseLocal, onPublish
   return (
     <Modal
       title="Master file"
-      subtitle="Search the current master file or load a different spreadsheet."
+      subtitle={isAdmin ? 'Search, edit or update the master file.' : 'Search the current master file.'}
       onClose={onClose}
-      width="lg"
+      width={tab === 'accounts' ? 'xl' : 'lg'}
       footer={
-        tab === 'manage' && local && (
+        tab === 'manage' && isAdmin && local && (
           <>
             <button onClick={() => onUseLocal(local.data, local.fileName)} className="btn-secondary">
               Use for this session
@@ -98,12 +104,21 @@ export function MasterModal({ master, initialTab, onClose, onUseLocal, onPublish
         <button role="tab" aria-selected={tab === 'search'} onClick={() => setTab('search')} className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === 'search' ? 'bg-surface text-ink shadow-sm' : 'text-ink-3 hover:text-ink'}`}>
           <Search className="mr-2 inline h-4 w-4" /> Search accounts
         </button>
-        <button role="tab" aria-selected={tab === 'manage'} onClick={() => setTab('manage')} className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === 'manage' ? 'bg-surface text-ink shadow-sm' : 'text-ink-3 hover:text-ink'}`}>
-          <FileSpreadsheet className="mr-2 inline h-4 w-4" /> Update master
-        </button>
+        {isAdmin && (
+          <button role="tab" aria-selected={tab === 'accounts'} onClick={() => setTab('accounts')} className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === 'accounts' ? 'bg-surface text-ink shadow-sm' : 'text-ink-3 hover:text-ink'}`}>
+            <Database className="mr-2 inline h-4 w-4" /> Manage accounts
+          </button>
+        )}
+        {isAdmin && (
+          <button role="tab" aria-selected={tab === 'manage'} onClick={() => setTab('manage')} className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === 'manage' ? 'bg-surface text-ink shadow-sm' : 'text-ink-3 hover:text-ink'}`}>
+            <FileSpreadsheet className="mr-2 inline h-4 w-4" /> Update master
+          </button>
+        )}
       </div>
 
-      {tab === 'search' ? (
+      {tab === 'accounts' && isAdmin ? (
+        <MasterAccountsPanel master={serverMaster} uploadKey={uploadKey} onUploadKeyChange={onUploadKeyChange} onMasterChanged={onMasterChanged} onError={onError} />
+      ) : tab === 'search' ? (
         <div className="space-y-4">
           <label className="sr-only" htmlFor="master-account-search">Search master accounts</label>
           <div className="relative">
@@ -176,7 +191,7 @@ export function MasterModal({ master, initialTab, onClose, onUseLocal, onPublish
               id="upload-key"
               type="password"
               value={uploadKey}
-              onChange={(e) => setUploadKey(e.target.value)}
+              onChange={(e) => onUploadKeyChange(e.target.value)}
               placeholder="Needed only to publish to the server"
               className="field"
               autoComplete="off"

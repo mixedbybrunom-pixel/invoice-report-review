@@ -7,6 +7,7 @@ export const EMPTY_MASTER: MasterData = {
   driverMap: {},
   ambiguousAccounts: [],
   ambiguousDetail: {},
+  dropshipAccounts: [],
 };
 
 export function masterAccountCount(m: MasterData): number {
@@ -31,6 +32,7 @@ export function parseMasterPayload(payload: unknown): MasterData {
     driverMap: rekeyRecord(p.driverMap as Record<string, DriverShare[]>),
     ambiguousAccounts: ((p.ambiguousAccounts as string[]) ?? []).map(normalizeAccountKey),
     ambiguousDetail: rekeyRecord(p.ambiguousDetail as Record<string, string[]>),
+    dropshipAccounts: ((p.dropshipAccounts as string[]) ?? []).map(normalizeAccountKey),
   };
 }
 
@@ -46,17 +48,23 @@ export async function fetchMasterFromServer(): Promise<MasterData> {
   }
 }
 
+/** The shape the master service stores and returns. */
+export function masterToEnvelope(data: MasterData) {
+  return {
+    territoryMap: data.territory,
+    accountInfo: data.accountInfo,
+    driverMap: data.driverMap,
+    ambiguousAccounts: data.ambiguousAccounts,
+    ambiguousDetail: data.ambiguousDetail,
+    dropshipAccounts: data.dropshipAccounts,
+  };
+}
+
 export async function pushMasterToServer(data: MasterData, uploadKey: string): Promise<void> {
   const res = await fetch(MASTER_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-upload-key': uploadKey },
-    body: JSON.stringify({
-      territoryMap: data.territory,
-      accountInfo: data.accountInfo,
-      driverMap: data.driverMap,
-      ambiguousAccounts: data.ambiguousAccounts,
-      ambiguousDetail: data.ambiguousDetail,
-    }),
+    body: JSON.stringify(masterToEnvelope(data)),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
@@ -117,7 +125,7 @@ export function aggregateMasterRows(rows: RawRow[], skipCCL: boolean): MasterDat
       .sort((a, b) => b.count - a.count);
   }
 
-  return { territory, accountInfo: info, driverMap, ambiguousAccounts, ambiguousDetail };
+  return { territory, accountInfo: info, driverMap, ambiguousAccounts, ambiguousDetail, dropshipAccounts: [] };
 }
 
 /** Adds accounts from `incoming` that the server does not already know. Existing server entries win. */
@@ -129,6 +137,7 @@ export function mergeAdditive(server: MasterData, incoming: MasterData): { merge
     driverMap: { ...server.driverMap },
     ambiguousAccounts: [...server.ambiguousAccounts],
     ambiguousDetail: { ...server.ambiguousDetail },
+    dropshipAccounts: [...server.dropshipAccounts],
   };
   const addedSet = new Set(added);
   for (const acc of added) {
@@ -224,7 +233,7 @@ export function collectUnknownAccounts(records: ValidatedRecord[]): UnknownAccou
 export function buildAdditionsFromCandidates(
   chosen: { account: string; customer: string; address: string; territory: string; drivers: DriverShare[] }[],
 ): MasterData {
-  const data: MasterData = { territory: {}, accountInfo: {}, driverMap: {}, ambiguousAccounts: [], ambiguousDetail: {} };
+  const data: MasterData = { territory: {}, accountInfo: {}, driverMap: {}, ambiguousAccounts: [], ambiguousDetail: {}, dropshipAccounts: [] };
   for (const c of chosen) {
     const account = normalizeAccountKey(c.account);
     data.territory[account] = c.territory.trim().toUpperCase();
@@ -232,4 +241,50 @@ export function buildAdditionsFromCandidates(
     if (c.drivers.length) data.driverMap[account] = c.drivers;
   }
   return data;
+}
+
+export interface AccountFields {
+  customer: string;
+  address: string;
+  territory: string;
+  /** True when this account is used for deliveries to other areas. */
+  dropship: boolean;
+}
+
+/** Changes one account's name, address and territory. A changed territory clears any "tied territory" flag. */
+export function editAccount(server: MasterData, account: string, fields: AccountFields): MasterData {
+  const territoryChanged = server.territory[account] !== fields.territory;
+  const ambiguousAccounts = territoryChanged ? server.ambiguousAccounts.filter((a) => a !== account) : [...server.ambiguousAccounts];
+  const ambiguousDetail = { ...server.ambiguousDetail };
+  if (territoryChanged) delete ambiguousDetail[account];
+  return {
+    ...server,
+    territory: { ...server.territory, [account]: fields.territory },
+    accountInfo: { ...server.accountInfo, [account]: { customer: fields.customer, address: fields.address } },
+    ambiguousAccounts,
+    ambiguousDetail,
+    dropshipAccounts: fields.dropship
+      ? [...new Set([...server.dropshipAccounts, account])]
+      : server.dropshipAccounts.filter((a) => a !== account),
+  };
+}
+
+/** Removes one account from every part of the master data. */
+export function deleteAccount(server: MasterData, account: string): MasterData {
+  const territory = { ...server.territory };
+  const accountInfo = { ...server.accountInfo };
+  const driverMap = { ...server.driverMap };
+  const ambiguousDetail = { ...server.ambiguousDetail };
+  delete territory[account];
+  delete accountInfo[account];
+  delete driverMap[account];
+  delete ambiguousDetail[account];
+  return {
+    territory,
+    accountInfo,
+    driverMap,
+    ambiguousAccounts: server.ambiguousAccounts.filter((a) => a !== account),
+    ambiguousDetail,
+    dropshipAccounts: server.dropshipAccounts.filter((a) => a !== account),
+  };
 }

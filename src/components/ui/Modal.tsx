@@ -7,7 +7,7 @@ interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
-  width?: 'md' | 'lg';
+  width?: 'md' | 'lg' | 'xl';
 }
 
 export function Modal({ title, subtitle, onClose, children, footer, width = 'md' }: ModalProps) {
@@ -29,7 +29,7 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 'md'
         aria-modal="true"
         aria-label={title}
         className={`relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-pop animate-pop-in ${
-          width === 'lg' ? 'max-w-2xl' : 'max-w-lg'
+          width === 'xl' ? 'max-w-5xl' : width === 'lg' ? 'max-w-2xl' : 'max-w-lg'
         }`}
       >
         <header className="flex items-start gap-3 border-b border-line px-6 py-5">
