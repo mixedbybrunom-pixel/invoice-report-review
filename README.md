@@ -1,8 +1,8 @@
 # Invoice Report Review
 
-Version 1.19.0
+Version 1.21.0
 
-Team site: https://ccl-invoice-report-review.netlify.app
+Hosted on Cloudflare Workers. Every commit to the main branch is built and deployed automatically.
 
 ## Run it locally
 
@@ -52,6 +52,23 @@ Then start the app and check the review flow:
 3. Change a row in the report and upload the edited report; it should have a separate review state.
 4. Sign in from another authorized browser profile and confirm the saved resolution is shared.
 
+
+## What's new in 1.21.0
+
+- **Drivers and vehicles** (left menu): shows how many drivers were out on the report day and which vehicle each used. Every report you load is saved to a shared history (table `driver_days`, added by `supabase/migrations/20261120090000_driver_days.sql`), so it builds up day by day. Loading the same day again updates it and never doubles it. Load older reports to fill in past days.
+- **Review flags**: a driver who used 2 or more vehicles in a day, or a vehicle used by 2 or more drivers, waits for review with a reason. Only the admin can delete history entries.
+- **History tab**: search by driver or registration, filter by dates, see which vehicles each driver used and on how many days.
+- **Second colour theme**: CCL green beside the blue one (two dots in the top bar). It is saved per person and works with dark mode.
+- **Clearer sidebar**: stronger text, highlighted counts, quiet zeros, collapsible groups, and Drop shipments moved to the top of its group.
+- **Slightly larger small text** and normal capitals instead of ALL CAPS labels. Row height is unchanged.
+- **Netlify clean-up**: the leftover Netlify code and `netlify.toml` are gone.
+
+## What's new in 1.20.0
+
+- **Safer master file service** (`worker/ccl-master-api.js`): keeps a dated backup (`backups/` in the R2 bucket, newest 50) before every save, checks the content it receives, refuses a save that would remove more than 20% of accounts, and compares the upload key in constant time. This file must be pasted into the `ccl-master-api` Worker in Cloudflare (Workers & Pages, ccl-master-api, Edit code). The website itself does not need it to run.
+- **Full status text** in the table (the badge is wider and the full text shows on hover).
+- **Clear server messages**: if the master service refuses a save, the app now shows the reason.
+- **Automated tests**: run `npm test`. They cover the drop-ship rules, territory mismatch and the master service.
 
 ## What's new in 1.19.0
 

@@ -1,0 +1,166 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --canvas: #f1f4f8;
+  --surface: #ffffff;
+  --surface-2: #f6f8fb;
+  --surface-3: #eaeef4;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --ink-3: #64748b;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-soft: #dbeafe;
+  --accent-ink: #1e40af;
+  color-scheme: light;
+}
+
+.dark {
+  --canvas: #121212;
+  --surface: #171717;
+  --surface-2: #1f1f1f;
+  --surface-3: #272727;
+  --ink: #f4f4f5;
+  --ink-2: #b3b3b3;
+  --ink-3: #858585;
+  --line: #292929;
+  --line-strong: #3a3a3a;
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-soft: #1e3a8a55;
+  --accent-ink: #93c5fd;
+  color-scheme: dark;
+}
+
+/* CCL green: a second colour theme beside the blue one. Only the accent colours change. */
+.theme-green {
+  --accent: #2e7d4f;
+  --accent-hover: #25673f;
+  --accent-soft: #dcf1e4;
+  --accent-ink: #1d5a37;
+}
+
+.dark.theme-green {
+  --accent: #3fa069;
+  --accent-hover: #5bb882;
+  --accent-soft: #1f4a3066;
+  --accent-ink: #8fdcb2;
+}
+
+@layer base {
+  html {
+    zoom: 90%;
+    font-size: 100%;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  button,
+  [role='button'] {
+    @apply cursor-pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-3 transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-accent text-white shadow-sm hover:bg-accent-hover;
+  }
+
+  .btn-secondary {
+    @apply btn border border-line bg-surface text-ink hover:bg-surface-2;
+  }
+
+  .btn-ghost {
+    @apply btn text-ink-2 hover:bg-surface-2 hover:text-ink;
+  }
+
+  .kbd {
+    @apply rounded border border-line bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-ink-2;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes load-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes bounce-soft {
+  0%, 100% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-10px) scale(1.08); }
+  50% { transform: translateY(0) scale(1); }
+  70% { transform: translateY(-4px) scale(1.03); }
+}
+
+.animate-fade-in { animation: fade-in 160ms ease-out both; }
+.animate-pop-in { animation: pop-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.animate-slide-in-right { animation: slide-in-right 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.animate-toast-in { animation: toast-in 220ms ease-out both; }
+.animate-bounce-soft { animation: bounce-soft 900ms ease-in-out 2; }
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.record-table-head th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--surface-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}

@@ -64,7 +64,7 @@ export function DetailPanel({ record, resolution, onClose, onResolve, onReopen, 
       <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-line bg-surface shadow-pop animate-slide-in-right">
         <header className="flex items-center gap-2 border-b border-line px-6 py-4">
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-ink-2">Invoice</p>
+            <p className="text-xs font-semibold tracking-normal text-ink-2">Invoice</p>
             <h2 className="truncate font-mono text-lg font-semibold">{record.invoiceNo}</h2>
           </div>
           <button onClick={copyInvoice} className="btn-ghost px-2.5 py-2 text-xs" aria-label="Copy invoice number">
@@ -271,7 +271,7 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
-      <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-ink-2">{title}</h3>
+      <h3 className="mb-2 text-xs font-semibold tracking-normal text-ink-2">{title}</h3>
       <div className="rounded-xl bg-surface-2 p-4 text-sm text-ink-2">{children}</div>
     </section>
   );

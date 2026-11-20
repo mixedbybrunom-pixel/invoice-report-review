@@ -5,7 +5,7 @@ import { FILTER_BY_KEY, countFilters, matchesFilter, type FilterKey } from '@/li
 import { fetchMasterFromServer, EMPTY_MASTER, masterAccountCount, collectUnknownAccounts } from '@/lib/master';
 import { exportRecords, readReport } from '@/lib/workbook';
 import { validateRows } from '@/lib/validate';
-import { loadTheme, saveTheme } from '@/lib/storage';
+import { loadColorTheme, loadTheme, saveColorTheme, saveTheme, type ColorTheme } from '@/lib/storage';
 import { fetchResolutionEvents, fetchResolutions, saveResolutions } from '@/lib/resolutionStore';
 import { MASTER_POLL_INTERVAL_MS } from '@/lib/rules';
 import type { MasterData, RawRow, Resolution, ResolutionEvent, ValidatedRecord } from '@/lib/types';
@@ -27,6 +27,9 @@ import { ReviewActivityDialog } from '@/components/ReviewActivityDialog';
 import { ResolutionPicker } from '@/components/ResolutionPicker';
 import { supabase } from '@/lib/supabase';
 import { publishAccountEdit } from '@/lib/masterSync';
+import { DriversView } from '@/components/DriversView';
+import { useDriverDays } from '@/hooks/useDriverDays';
+import { buildDriverDays, buildReviewGroups, singleDayFromRange, summariseDay } from '@/lib/drivers';
 
 export default function App() {
   const [rows, setRows] = useState<RawRow[] | null>(null);
@@ -60,6 +63,8 @@ export default function App() {
   const [addReviewerOpen, setAddReviewerOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [dark, setDark] = useState(loadTheme);
+  const [colorTheme, setColorTheme] = useState<ColorTheme>(loadColorTheme);
+  const [view, setView] = useState<'invoices' | 'drivers'>('invoices');
   const [filter, setFilter] = useState<FilterKey>('needsaction');
   const [search, setSearch] = useState('');
   const [groupByAccount, setGroupByAccount] = useState(true);
@@ -74,6 +79,21 @@ export default function App() {
     () => (rows ? validateRows(rows, master) : []),
     [rows, master],
   );
+
+  const reportDays = useMemo(
+    () => (rows ? buildDriverDays(rows, singleDayFromRange(dateRange)).days : []),
+    [rows, dateRange],
+  );
+  const driverDays = useDriverDays({ enabled: !!session && isMember, reportId, reportDays, notify });
+  const driversToReview = useMemo(
+    () => buildReviewGroups(driverDays.stored).filter((g) => !g.rows.every((r) => !!r.reviewedAt)).length,
+    [driverDays.stored],
+  );
+  const driversOut = useMemo(() => {
+    const source = reportDays.length ? reportDays : driverDays.stored;
+    const latest = source.reduce((max, d) => (d.date > max ? d.date : max), '');
+    return latest ? summariseDay(source.filter((d) => d.date === latest)).drivers : 0;
+  }, [reportDays, driverDays.stored]);
 
   const counts = useMemo(() => countFilters(records, resolutions), [records, resolutions]);
   const unknownAccounts = useMemo(() => collectUnknownAccounts(records), [records]);
@@ -133,6 +153,11 @@ export default function App() {
     document.documentElement.classList.toggle('dark', dark);
     saveTheme(dark);
   }, [dark]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('theme-green', colorTheme === 'green');
+    saveColorTheme(colorTheme);
+  }, [colorTheme]);
 
   useEffect(() => {
     let cancelled = false;
@@ -240,6 +265,7 @@ export default function App() {
       setFileName(file.name);
       setDateRange(parsed.dateRange);
       setFilter('needsaction');
+      setView('invoices');
       setGroupByAccount(true);
       setSelectedId(null);
       setChecked(new Set());
@@ -379,6 +405,7 @@ export default function App() {
 
   const changeFilter = (key: FilterKey) => {
     setFilter(key);
+    setView('invoices');
     setChecked(new Set());
     setSidebarOpen(false);
   };
@@ -396,6 +423,10 @@ export default function App() {
         filter={filter}
         counts={counts}
         onFilter={changeFilter}
+        view={view}
+        onOpenDrivers={() => { setView('drivers'); setSidebarOpen(false); }}
+        driversOut={driversOut}
+        driversToReview={driversToReview}
         masterStatus={masterStatus}
         masterCount={masterAccountCount(master)}
         hasReport={!!rows}
@@ -426,6 +457,19 @@ export default function App() {
             <div className="ml-auto flex items-center gap-2">
               {isAdmin && <button onClick={() => setAddReviewerOpen(true)} className="btn-secondary h-9 gap-1.5 px-2.5" title="Add a reviewer"><UserPlus className="h-4 w-4" /><span className="hidden sm:inline">Add reviewer</span></button>}
               <button onClick={() => setActivityOpen(true)} className="btn-secondary h-9 gap-1.5 px-2.5" title="See who resolved invoices"><Activity className="h-4 w-4" /><span className="hidden sm:inline">Activity</span></button>
+              <div className="hidden items-center gap-1 rounded-lg border border-line bg-surface px-1.5 sm:flex" role="group" aria-label="Colour theme">
+                {([['blue', 'Blue theme', '#2563eb'], ['green', 'CCL green theme', '#2e7d4f']] as const).map(([key, label, colour]) => (
+                  <button
+                    key={key}
+                    onClick={() => setColorTheme(key)}
+                    aria-label={label}
+                    aria-pressed={colorTheme === key}
+                    title={label}
+                    className={`h-5 w-5 rounded-full border-2 transition-transform ${colorTheme === key ? 'scale-110 border-ink' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                    style={{ backgroundColor: colour }}
+                  />
+                ))}
+              </div>
               <button
                 onClick={() => setDark((d) => !d)}
                 className="btn-secondary h-9 w-9 p-0"
@@ -449,7 +493,20 @@ export default function App() {
         </header>
 
         <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-6">
-          {!rows ? (
+          {view === 'drivers' ? (
+            <DriversView
+              reportDays={reportDays}
+              hasReport={!!rows}
+              stored={driverDays.stored}
+              loading={driverDays.loading}
+              saveState={driverDays.saveState}
+              isAdmin={isAdmin}
+              onReview={driverDays.review}
+              onReopen={driverDays.reopen}
+              onDelete={driverDays.remove}
+              onRetrySave={driverDays.retrySave}
+            />
+          ) : !rows ? (
             <UploadZone onFile={handleFile} busy={isReading} error={loadError} />
           ) : (
             <>
