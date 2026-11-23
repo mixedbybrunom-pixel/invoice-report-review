@@ -35,9 +35,6 @@ export function UploadZone({ onFile, busy, error }: UploadZoneProps) {
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
         onClick={() => !busy && inputRef.current?.click()}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
         className={`group relative flex cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-8 py-14 text-center transition-all duration-200 ${
           dragging
             ? 'scale-[1.01] border-accent bg-accent-soft'
@@ -48,10 +45,11 @@ export function UploadZone({ onFile, busy, error }: UploadZoneProps) {
           {busy ? <Loader2 className="h-6 w-6 animate-spin" /> : <UploadCloud className="h-6 w-6" />}
         </div>
         <div>
-          <p className="font-medium">{busy ? 'Reading your report...' : 'Drop your report here, or click to browse'}</p>
+          <p className="font-medium">{busy ? 'Reading your report...' : 'Drop your report here, or choose a file'}</p>
           <p className="mt-1 flex items-center justify-center gap-1.5 text-xs text-ink-3">
             <FileSpreadsheet className="h-3.5 w-3.5" /> .xlsx or .xls files
           </p>
+          {!busy && <button type="button" onClick={(event) => { event.stopPropagation(); inputRef.current?.click(); }} className="btn-primary mt-4 min-h-11 px-5">Browse files</button>}
         </div>
         <input
           ref={inputRef}
@@ -75,3 +73,4 @@ export function UploadZone({ onFile, busy, error }: UploadZoneProps) {
     </div>
   );
 }
+

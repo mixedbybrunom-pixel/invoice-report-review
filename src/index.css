@@ -164,3 +164,9 @@
     transition-duration: 1ms !important;
   }
 }
+
+@media (max-width: 767px) {
+  html { zoom: 100%; }
+  body { font-size: 16px; }
+}
+

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type UIEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from 'react';
 import { Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { BADGE_CLASS, ROW_TINT, isCleared, isFlagged, type FilterKey } from '@/lib/filters';
 import { normalizeAccountKey } from '@/lib/rules';
@@ -36,6 +36,7 @@ export function RecordTable({
   // Newly opened reports start with every account folded. The component is
   // keyed by report id, so this empty expanded set resets on each new report.
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(() => new Set());
+  const [mobileLimit, setMobileLimit] = useState(80);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isEmpty = records.length === 0;
 
@@ -79,6 +80,8 @@ export function RecordTable({
   const slice = displayRows.slice(start, end);
   const allChecked = records.length > 0 && records.every((r) => checked.has(r.id));
 
+  useEffect(() => setMobileLimit(80), [records, activeFilter]);
+
   if (isEmpty) {
     return (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-line-strong bg-surface px-6 py-16 text-center animate-fade-in">
@@ -90,10 +93,16 @@ export function RecordTable({
 
   return (
     <div className="flex min-h-[360px] flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
-      {groupByAccount && <div className="flex items-center justify-end gap-1 border-b border-line px-3 py-1">
-        <button type="button" onClick={() => setExpandedAccounts(new Set())} className="btn-ghost h-7 px-2 text-xs">Collapse all</button>
-        <button type="button" onClick={() => setExpandedAccounts(new Set(accountGroups.map((group) => group.key)))} className="btn-ghost h-7 px-2 text-xs">Expand all</button>
+      {groupByAccount && <div className="flex items-center justify-between gap-1 border-b border-line px-3 py-1">
+        <button type="button" onClick={() => onToggleAll(!allChecked)} className="btn-ghost h-8 px-2 text-xs md:hidden">{allChecked ? 'Clear selection' : 'Select all visible'}</button>
+        <div className="ml-auto flex items-center gap-1">
+          <button type="button" onClick={() => setExpandedAccounts(new Set())} className="btn-ghost h-8 px-2 text-xs">Collapse all</button>
+          <button type="button" onClick={() => setExpandedAccounts(new Set(accountGroups.map((group) => group.key)))} className="btn-ghost h-8 px-2 text-xs">Expand all</button>
+        </div>
       </div>}
+      <div
+        className="hidden min-h-0 flex-1 flex-col overflow-hidden md:flex"
+      >
       <div
         ref={scrollRef}
         onScroll={(e: UIEvent<HTMLDivElement>) => setScrollTop(e.currentTarget.scrollTop)}
@@ -302,9 +311,87 @@ export function RecordTable({
           </tbody>
         </table>
       </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 md:hidden">
+        <div className="space-y-2">
+          {displayRows.slice(0, mobileLimit).map((item) => {
+            if (item.type === 'account') {
+              const { group, groupIndex } = item;
+              const collapsed = !expandedAccounts.has(group.key);
+              const openCount = group.records.filter((record) => isFlagged(record) && resolutions[String(record.id)]?.status !== 'resolved').length;
+              const resolvedCount = group.records.filter((record) => isFlagged(record) && resolutions[String(record.id)]?.status === 'resolved').length;
+              const names = [...group.customers];
+              const topIssues = [...new Set(group.records
+                .filter((record) => isFlagged(record) && resolutions[String(record.id)]?.status !== 'resolved')
+                .flatMap((record) => record.issues.map((issue) => issue.status)))].slice(0, 2);
+              const toggleAccount = () => setExpandedAccounts((previous) => {
+                const next = new Set(previous);
+                if (next.has(group.key)) next.delete(group.key); else next.add(group.key);
+                return next;
+              });
+              return (
+                <button key={`mobile-account:${group.key}`} type="button" onClick={toggleAccount} aria-expanded={!collapsed} className="w-full rounded-xl border border-line bg-surface-2 p-3 text-left shadow-sm">
+                  <span className="flex items-start gap-2">
+                    {collapsed ? <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" /> : <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />}
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-sm font-semibold text-ink">{group.account}</span>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${openCount ? 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-300' : resolvedCount ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-surface-3 text-ink-3'}`}>{openCount ? `${openCount} open` : resolvedCount ? 'Resolved' : 'No issues'}</span>
+                      </span>
+                      <span className="mt-1 block truncate text-sm text-ink-2">{names.slice(0, 2).join(' · ') || 'Customer name not listed'}{names.length > 2 ? ` · +${names.length - 2}` : ''}</span>
+                      {topIssues.length > 0 && <span className="mt-2 flex flex-wrap gap-1">{topIssues.map((label) => <span key={label} className="max-w-full truncate rounded-md bg-surface px-2 py-0.5 text-xs text-ink-2">{label}</span>)}</span>}
+                      <span className="mt-1 block text-xs text-ink-3">Account {groupIndex + 1} · {group.records.length} invoice{group.records.length === 1 ? '' : 's'}</span>
+                    </span>
+                  </span>
+                </button>
+              );
+            }
+            const r = item.record;
+            const resolved = resolutions[String(r.id)]?.status === 'resolved';
+            const preferredClasses = filterClasses(activeFilter);
+            const orderedIssues = [...r.issues].sort((a, b) => {
+              const aRank = preferredClasses.indexOf(a.cls);
+              const bRank = preferredClasses.indexOf(b.cls);
+              return (aRank < 0 ? Number.MAX_SAFE_INTEGER : aRank) - (bRank < 0 ? Number.MAX_SAFE_INTEGER : bRank) || a.priority - b.priority;
+            });
+            const issue = orderedIssues[0];
+            const issueClass = issue?.cls ?? r.primaryCls;
+            return (
+              <article key={`mobile-record:${r.id}`} className={`rounded-xl border border-line p-3 shadow-sm ${ROW_TINT[issueClass] ?? 'bg-surface'}`}>
+                <div className="flex items-start gap-3">
+                  <input type="checkbox" aria-label={`Select invoice ${r.invoiceNo}`} checked={checked.has(r.id)} onChange={() => onToggleChecked(r.id)} className="mt-1 h-5 w-5 shrink-0 cursor-pointer accent-accent" />
+                  <button type="button" onClick={() => onOpen(r)} className="min-w-0 flex-1 text-left">
+                    <span className="flex items-start justify-between gap-2">
+                      <span className="min-w-0">
+                        <span className="block font-mono text-sm font-semibold text-ink">{r.invoiceNo}</span>
+                        <span className="mt-0.5 block truncate text-sm font-medium text-ink">{r.customer || 'Customer not listed'}</span>
+                      </span>
+                      <span className={`max-w-[48%] truncate rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${BADGE_CLASS[issueClass] ?? BADGE_CLASS.ok}`}>{issue?.status ?? 'Clean'}</span>
+                    </span>
+                    <span className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-ink-2">
+                      <span>Account <b className="font-mono">{r.account || '—'}</b></span>
+                      <span>Driver <b className="truncate">{r.driverName || '—'}</b></span>
+                      <span>Territory <b className="font-mono">{r.territory || '—'}</b></span>
+                      <span>Weight <b className="font-mono">{r.weight.toLocaleString()}</b></span>
+                    </span>
+                    <span className="mt-2 flex items-center gap-2 text-xs text-ink-3">
+                      {r.documentId !== '-' && <span className="truncate font-mono">Doc {r.documentId}</span>}
+                      {orderedIssues.length > 1 && <span>+{orderedIssues.length - 1} more flags</span>}
+                      {resolved && <span className="font-medium text-emerald-700 dark:text-emerald-300">Resolved</span>}
+                      <span className="ml-auto text-accent">Review details ›</span>
+                    </span>
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+          {mobileLimit < displayRows.length && <button type="button" onClick={() => setMobileLimit((limit) => limit + 80)} className="btn-secondary w-full py-3">Show next {Math.min(80, displayRows.length - mobileLimit)} items</button>}
+        </div>
+      </div>
       <div className="flex items-center justify-between border-t border-line bg-surface-2 px-4 py-2.5 text-xs text-ink-3 dark:border-white/[0.06] dark:bg-[#1d1d1d]">
         <span>{records.length.toLocaleString()} invoices{groupByAccount ? ` · ${accountGroups.length.toLocaleString()} accounts` : ' · account grouping off'}</span>
-        <span>Click a row to review it</span>
+        <span className="hidden md:inline">Click a row to review it</span>
+        <span className="md:hidden">Tap an invoice to review it</span>
       </div>
     </div>
   );
@@ -329,3 +416,4 @@ function filterClasses(filter: FilterKey): IssueClass[] {
     default: return [];
   }
 }
+

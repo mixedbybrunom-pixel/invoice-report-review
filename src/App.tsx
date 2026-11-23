@@ -105,6 +105,8 @@ export default function App() {
     );
   }, [records, filter, search, resolutions]);
 
+  const checkedRecords = useMemo(() => records.filter((record) => checked.has(record.id)), [records, checked]);
+
   const selected = records.find((r) => r.id === selectedId) ?? null;
 
   useEffect(() => {
@@ -386,11 +388,10 @@ export default function App() {
     });
 
   const markCheckedResolved = async () => {
-    const selectedRecords = records.filter((r) => checked.has(r.id));
     if (!bulkReason || (bulkReason === OTHER_RESOLUTION_REASON && !bulkNote.trim())) return;
-    const saved = await setResolution(selectedRecords, 'resolved', bulkReason, bulkNote.trim());
+    const saved = await setResolution(checkedRecords, 'resolved', bulkReason, bulkNote.trim());
     if (saved) {
-      notify(`${selectedRecords.length} ${selectedRecords.length === 1 ? 'invoice' : 'invoices'} resolved`, 'success', bulkReason);
+      notify(`${checkedRecords.length} ${checkedRecords.length === 1 ? 'invoice' : 'invoices'} resolved`, 'success', bulkReason);
       setChecked(new Set());
       setBulkReason('');
       setBulkNote('');
@@ -510,6 +511,17 @@ export default function App() {
             <UploadZone onFile={handleFile} busy={isReading} error={loadError} />
           ) : (
             <>
+              <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-sm">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-ink-3">CURRENT REVIEW</p>
+                  <h2 className="truncate text-lg font-semibold text-ink">{FILTER_BY_KEY[filter].label}</h2>
+                  <p className="text-sm text-ink-2">{fileName}{dateRange ? ` · ${dateRange}` : ''}</p>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="rounded-lg bg-accent-soft px-3 py-2 font-medium text-accent-ink">{visible.length.toLocaleString()} shown</span>
+                  <span className="rounded-lg bg-surface-2 px-3 py-2 text-ink-2">{counts.needsaction.toLocaleString()} need action</span>
+                </div>
+              </section>
               <div className="flex flex-wrap items-center gap-3">
                 <label className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-medium text-ink-2">
                   <input type="checkbox" checked={groupByAccount} onChange={(event) => setGroupByAccount(event.target.checked)} className="h-4 w-4 cursor-pointer accent-accent" />
@@ -535,22 +547,26 @@ export default function App() {
                     Push account{unknownAccounts.length === 1 ? '' : 's'} to master file
                   </button>
                 )}
-                {checked.size > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-accent/30 bg-accent-soft px-3 py-1.5 animate-pop-in">
-                    <span className="text-sm font-medium text-accent-ink">{checked.size} selected</span>
-                    <ResolutionPicker label="Resolution reason for selected invoices" value={bulkReason} onChange={setBulkReason} placeholder="Choose resolution" className="w-52" />
-                    {bulkReason === OTHER_RESOLUTION_REASON && (
-                      <input aria-label="Describe the resolution" value={bulkNote} onChange={(e) => setBulkNote(e.target.value)} placeholder="Describe what was done" className="field w-48 bg-surface py-1.5 text-xs" />
-                    )}
-                    <button onClick={markCheckedResolved} disabled={!bulkReason || (bulkReason === OTHER_RESOLUTION_REASON && !bulkNote.trim())} className="btn-primary px-2.5 py-1 text-xs">
-                      <CheckCheck className="h-3.5 w-3.5" /> Mark resolved
-                    </button>
-                    <button onClick={() => { setChecked(new Set()); setBulkReason(''); setBulkNote(''); }} className="btn-ghost px-2 py-1 text-xs">
-                      Clear
-                    </button>
-                  </div>
-                )}
               </div>
+
+              {checked.size > 0 && (
+                <section className="sticky bottom-2 z-30 flex flex-wrap items-center gap-3 rounded-xl border border-accent/30 bg-surface/95 p-3 shadow-lg backdrop-blur animate-pop-in">
+                  <div className="mr-auto min-w-[130px]">
+                    <p className="text-sm font-semibold text-ink">{checkedRecords.length} invoice{checkedRecords.length === 1 ? '' : 's'} selected</p>
+                    <p className="max-w-[340px] truncate text-xs text-ink-3" title={checkedRecords.map((record) => record.invoiceNo).join(', ')}>
+                      {checkedRecords.slice(0, 4).map((record) => record.invoiceNo).join(' · ')}{checkedRecords.length > 4 ? ` · +${checkedRecords.length - 4} more` : ''}
+                    </p>
+                  </div>
+                  <ResolutionPicker label="Resolution reason for selected invoices" value={bulkReason} onChange={setBulkReason} placeholder="Choose resolution" className="w-full sm:w-60" />
+                  {bulkReason === OTHER_RESOLUTION_REASON && (
+                    <input aria-label="Describe the resolution" value={bulkNote} onChange={(e) => setBulkNote(e.target.value)} placeholder="Describe what was done" className="field w-full sm:w-56" />
+                  )}
+                  <button onClick={markCheckedResolved} disabled={!bulkReason || (bulkReason === OTHER_RESOLUTION_REASON && !bulkNote.trim())} className="btn-primary h-10 px-4">
+                    <CheckCheck className="h-4 w-4" /> Mark resolved
+                  </button>
+                  <button onClick={() => { setChecked(new Set()); setBulkReason(''); setBulkNote(''); }} className="btn-secondary h-10 px-4">Clear selection</button>
+                </section>
+              )}
 
               <RecordTable
                 key={reportId ?? 'no-report'}
@@ -648,3 +664,4 @@ export default function App() {
     </div>
   );
 }
+
