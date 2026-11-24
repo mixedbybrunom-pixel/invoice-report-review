@@ -37,7 +37,6 @@ export type FilterKey =
   | 'collections'
   | 'cclinternal'
   | 'redelivery'
-  | 'deliveryfailed'
   | 'dropship'
   | 'multidriver'
   | 'driverunusual'
@@ -69,7 +68,6 @@ export const FILTERS: FilterDef[] = [
   { key: 'collections', label: 'General collections', description: '0900 invoices or rows whose Details mention collection', icon: PackageCheck, text: 'text-indigo-600 dark:text-indigo-400', chip: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400' },
   { key: 'cclinternal', label: 'CCL internal', description: 'Internal CCL accounts', icon: Building2, text: 'text-sky-600 dark:text-sky-400', chip: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400' },
   { key: 'redelivery', label: 'Redeliveries', description: 'Details mention a redelivery', icon: Truck, text: 'text-violet-600 dark:text-violet-400', chip: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400' },
-  { key: 'deliveryfailed', label: 'Delivery fails', description: 'Delivery Failed rows and later captures of the same invoice', icon: Truck, text: 'text-orange-600 dark:text-orange-400', chip: 'bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400' },
   { key: 'dropship', label: 'Drop shipments', description: 'Needs your confirmation each time', icon: PackageCheck, text: 'text-indigo-600 dark:text-indigo-400', chip: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400' },
   { key: 'multidriver', label: 'Multi-driver address', description: 'Account or address served by several drivers', icon: Users, text: 'text-cyan-700 dark:text-cyan-400', chip: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-400' },
   { key: 'driverunusual', label: 'Unusual driver', description: 'Driver differs from the usual one', icon: UserX, text: 'text-sky-600 dark:text-sky-400', chip: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400' },
@@ -106,7 +104,6 @@ export function matchesFilter(r: ValidatedRecord, key: FilterKey, res: Resolutio
     case 'collections': return has('collections');
     case 'cclinternal': return r.isCCLAccount;
     case 'redelivery': return r.isRedelivery;
-    case 'deliveryfailed': return r.isDeliveryFailed;
     case 'dropship': return r.isDropship;
     case 'multidriver': return has('multidriver');
     case 'driverunusual': return r.isDriverUnusual;

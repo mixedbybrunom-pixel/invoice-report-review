@@ -17,7 +17,8 @@ interface SidebarProps {
   onOpenMaster: () => void;
   onOpenAccountSearch: () => void;
   isAdmin: boolean;
-  view: 'invoices' | 'drivers';
+  view: 'invoices' | 'drivers' | 'history';
+  onOpenHistory: () => void;
   onOpenDrivers: () => void;
   driversOut: number;
   driversToReview: number;
@@ -25,7 +26,7 @@ interface SidebarProps {
 
 const GROUPS: { title: string; keys: FilterKey[] }[] = [
   { title: 'Workflow', keys: ['all', 'needsaction', 'resolved', 'ok'] },
-  { title: 'Invoice checks', keys: ['error', 'suspicious', 'deliveryfailed', 'cclinternal', 'zero', 'duplicate', 'weightflag'] },
+  { title: 'Invoice checks', keys: ['error', 'suspicious', 'cclinternal', 'zero', 'duplicate', 'weightflag'] },
   { title: 'Collections', keys: ['collections', 'repairs'] },
   { title: 'Territory and driver', keys: ['dropship', 'mismatch', 'split', 'unknownaccount', 'ambiguous', 'multidriver', 'driverunusual', 'redelivery'] },
 ];
@@ -57,7 +58,7 @@ function NavItem(props: { active: boolean; disabled?: boolean; icon: LucideIcon;
 }
 
 export function Sidebar(props: SidebarProps) {
-  const { open, onClose, filter, counts, onFilter, masterStatus, masterCount, hasReport, fileName, onNewReport, onOpenMaster, onOpenAccountSearch, isAdmin, view, onOpenDrivers, driversOut, driversToReview } = props;
+  const { open, onClose, filter, counts, onFilter, masterStatus, masterCount, hasReport, fileName, onNewReport, onOpenMaster, onOpenAccountSearch, isAdmin, view, onOpenDrivers, onOpenHistory, driversOut, driversToReview } = props;
   const byKey = Object.fromEntries(FILTERS.map((f) => [f.key, f]));
   const [collapsed, setCollapsed] = useState<string[]>(loadCollapsedGroups);
   const toggleGroup = (title: string) =>
@@ -125,6 +126,11 @@ export function Sidebar(props: SidebarProps) {
               onClick={onOpenDrivers}
               extra={driversToReview > 0 ? <span className="rounded-md bg-amber-100 px-1.5 font-mono text-xs font-semibold text-amber-800 dark:bg-amber-500/20 dark:text-amber-300" title="Waiting for review">{driversToReview}</span> : null}
             />
+          </div>
+
+          <div>
+            <p className="px-3 pb-1.5 text-xs font-semibold text-ink">Records</p>
+            <NavItem active={view === 'history'} icon={Database} iconClass="text-indigo-600 dark:text-indigo-400" label="Invoice history" count={0} onClick={onOpenHistory} />
           </div>
 
           {GROUPS.slice(1).map((group) => renderGroup(group))}

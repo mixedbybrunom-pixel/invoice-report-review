@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, CloudUpload, Copy, PackageCheck, RotateCcw, Truck, X } from 'lucide-react';
+import { Check, CloudUpload, Copy, PackageCheck, RotateCcw, X } from 'lucide-react';
 import { BADGE_CLASS, STATUS_LABEL, isCleared } from '@/lib/filters';
 import type { Resolution, ValidatedRecord } from '@/lib/types';
 import { OTHER_RESOLUTION_REASON } from '@/lib/resolutionReasons';
@@ -95,29 +95,6 @@ export function DetailPanel({ record, resolution, onClose, onResolve, onReopen, 
           </section>
 
           <section className="divide-y divide-line rounded-xl border border-line">
-            {record.deliveryFailureHistory && (
-              <div className="space-y-2 border-b border-line bg-orange-50/70 p-4 dark:bg-orange-500/5">
-                <h3 className="flex items-center gap-2 text-xs font-semibold text-orange-800 dark:text-orange-300">
-                  <Truck className="h-4 w-4" /> Delivery failure history
-                </h3>
-                <p className="text-sm text-ink-2">
-                  {record.deliveryFailureHistory.failedAttempts} failed attempt{record.deliveryFailureHistory.failedAttempts === 1 ? '' : 's'}.
-                  {record.deliveryFailureHistory.latestFailedOn ? ` Latest: ${record.deliveryFailureHistory.latestFailedOn}` : ''}
-                  {record.deliveryFailureHistory.latestFailedDriver ? ` · ${record.deliveryFailureHistory.latestFailedDriver}` : ''}.
-                </p>
-                {record.deliveryFailureHistory.capturedAgainOn ? (
-                  <p className="text-sm text-ink-2">
-                    The same invoice number appears again on {record.deliveryFailureHistory.capturedAgainOn}
-                    {record.deliveryFailureHistory.capturedAgainDriver ? ` with ${record.deliveryFailureHistory.capturedAgainDriver}` : ''}
-                    {record.deliveryFailureHistory.capturedAgainAlsoFailed ? ', also marked Delivery Failed.' : '. This confirms a later capture, not successful delivery.'}
-                  </p>
-                ) : (
-                  <p className="text-sm text-ink-2">
-                    No later matching invoice appears in this report{record.deliveryFailureHistory.reportThrough ? ` through ${record.deliveryFailureHistory.reportThrough}` : ''}. A handoff to RAM or Triton is possible, but this report does not record the carrier.
-                  </p>
-                )}
-              </div>
-            )}
             <Row label="Driver" value={record.driverName} />
             <Row label="Customer" value={record.customer} />
             <Row label="Account" value={record.account} mono />

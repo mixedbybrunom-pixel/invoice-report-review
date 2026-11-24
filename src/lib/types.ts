@@ -103,23 +103,6 @@ export interface ValidatedRecord {
   issues: Issue[];
   isCCLAccount: boolean;
   isRedelivery: boolean;
-  isDeliveryFailed: boolean;
-  deliveryFailureInfo: {
-    failedOn: string | null;
-    capturedAgainOn: string | null;
-    capturedAgainDriver: string;
-    capturedAgainAlsoFailed: boolean;
-    reportThrough: string | null;
-  } | null;
-  deliveryFailureHistory: {
-    failedAttempts: number;
-    latestFailedOn: string | null;
-    latestFailedDriver: string;
-    capturedAgainOn: string | null;
-    capturedAgainDriver: string;
-    capturedAgainAlsoFailed: boolean;
-    reportThrough: string | null;
-  } | null;
   isDropship: boolean;
   /** Why this row counts as a drop shipment: the account is marked, the text says so, or both. */
   dropshipSource: 'account' | 'text' | 'both' | null;
