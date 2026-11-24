@@ -13,6 +13,7 @@ export const REDELIVERY_PATTERN = /re.?load|re.?d[ei]?l[il]?[iy]?v[ea]?r?[yi]?/i
 
 export const INVOICE_RULES = {
   repairs: /^\d{5}$/,
+  repairCollections: /^20\d{2}(?:0[1-9]|1[0-2])-\d{4}$/,
   collections: /^0900-?/i,
   internal: /ACC-SINV/i,
   validStart: /^(00|02)/,

@@ -1,6 +1,6 @@
 # Invoice Report Review
 
-Version 1.22.1
+Version 1.22.2
 
 Hosted on Cloudflare Workers. Every commit to the main branch is built and deployed automatically.
 
@@ -52,6 +52,10 @@ Then start the app and check the review flow:
 3. Change a row in the report and upload the edited report; it should have a separate review state.
 4. Sign in from another authorized browser profile and confirm the saved resolution is shared.
 
+
+## What's new in 1.22.2
+
+- **Collections are grouped by type**: general collection invoices and collections for repairs have separate filters under a shared Collections section. Five-digit repair invoices and `YYYYMM-####` collection-for-repair invoices appear under Collections for repairs.
 
 ## What's new in 1.22.1
 

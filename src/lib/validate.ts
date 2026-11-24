@@ -120,7 +120,7 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
   });
 
   const isRepairOrInternal = (p: Prepared) =>
-    INVOICE_RULES.repairs.test(p.invoice) || INVOICE_RULES.internal.test(p.invoice);
+    INVOICE_RULES.repairs.test(p.invoice) || INVOICE_RULES.repairCollections.test(p.invoice) || INVOICE_RULES.internal.test(p.invoice);
 
   const dupMap = groupBy(
     prepared.flatMap((p, idx) => (p ? [{ ...p, idx }] : [])),
@@ -192,7 +192,9 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
     let driverConfidenceInfo: ValidatedRecord['driverConfidenceInfo'] = null;
     let ambiguousTerritories: string[] = [];
 
-    if (INVOICE_RULES.repairs.test(invoice)) add('For Repairs', 'repairs', 10, true);
+    if (INVOICE_RULES.repairs.test(invoice) || INVOICE_RULES.repairCollections.test(invoice)) {
+      add('Collections for repairs', 'repairs', 10, true);
+    }
     else if (INVOICE_RULES.internal.test(invoice)) add(getCCLLabel(account), 'cclinternal', 20, true);
     else if (INVOICE_RULES.collections.test(invoice) || /\bcollections?\b/i.test(details)) {
       add('Collections invoice', 'collections', 25, false);
