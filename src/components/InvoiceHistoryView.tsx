@@ -13,7 +13,8 @@ type ArchiveEvent = {
   source_report_name: string;
   outcome: 'delivered' | 'failed' | 'other';
 };
-type ArchiveWrite = Omit<ArchiveEvent, 'outcome'>;
+type ArchiveWrite = Omit<ArchiveEvent, 'event_key' | 'outcome'>;
+type ArchiveUpsert = ArchiveWrite & Pick<ArchiveEvent, 'event_key'>;
 
 const str = (v: unknown) => String(v ?? '').trim();
 const isValidInvoice = (row: RawRow, invoice: string, account: string) =>
@@ -107,7 +108,7 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
       }
       const prepared = [...unique.values()];
       if (!prepared.length) throw new Error('No valid invoice numbers were found in the 30-day report. Nothing was imported.');
-      const payload: ArchiveWrite[] = [];
+      const payload: ArchiveUpsert[] = [];
       for (let i = 0; i < prepared.length; i += 1) {
         const row = prepared[i];
         payload.push({ ...row, event_key: await makeEventKey(row) });
