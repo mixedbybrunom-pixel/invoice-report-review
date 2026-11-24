@@ -25,7 +25,7 @@ interface SidebarProps {
 
 const GROUPS: { title: string; keys: FilterKey[] }[] = [
   { title: 'Workflow', keys: ['all', 'needsaction', 'resolved', 'ok'] },
-  { title: 'Invoice checks', keys: ['error', 'suspicious', 'repairs', 'cclinternal', 'zero', 'duplicate', 'weightflag'] },
+  { title: 'Invoice checks', keys: ['error', 'suspicious', 'repairs', 'collections', 'cclinternal', 'zero', 'duplicate', 'weightflag'] },
   { title: 'Territory and driver', keys: ['dropship', 'mismatch', 'split', 'unknownaccount', 'ambiguous', 'multidriver', 'driverunusual', 'redelivery'] },
 ];
 
@@ -165,3 +165,4 @@ export function Sidebar(props: SidebarProps) {
     </>
   );
 }
+

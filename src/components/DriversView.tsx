@@ -88,7 +88,8 @@ function ReviewCard({ group, reviewed, ids, onReview, onReopen }: {
 
 export function DriversView(props: DriversViewProps) {
   const { reportDays, hasReport, stored, loading, saveState, isAdmin, onReview, onReopen, onDelete, onRetrySave } = props;
-  const [tab, setTab] = useState<'report' | 'history'>(hasReport ? 'report' : 'history');
+  const [tab, setTab] = useState<'report' | 'review' | 'history'>(hasReport ? 'report' : 'history');
+  const [historyMode, setHistoryMode] = useState<'drivers' | 'days'>('drivers');
   const [search, setSearch] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -101,8 +102,6 @@ export function DriversView(props: DriversViewProps) {
   const done = groups.filter(isReviewed);
 
   const flags = useMemo(() => flagsByRow(stored), [stored]);
-  const reportFlags = useMemo(() => flagsByRow(reportDays), [reportDays]);
-
   const reportDates = useMemo(() => [...new Set(reportDays.map((d) => d.date))].sort().reverse(), [reportDays]);
 
   const q = search.trim().toLowerCase();
@@ -119,8 +118,8 @@ export function DriversView(props: DriversViewProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-lg border border-line bg-surface p-0.5" role="tablist">
-          {([['report', 'Report days'], ['history', 'History']] as const).map(([key, label]) => (
+        <div className="inline-flex flex-wrap rounded-lg border border-line bg-surface p-0.5" role="tablist" aria-label="Driver information sections">
+          {([['report', 'Report days'], ['review', `Review flags${open.length ? ` · ${open.length}` : ''}`], ['history', 'History']] as const).map(([key, label]) => (
             <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
               className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors ${tab === key ? 'bg-accent text-white' : 'text-ink-2 hover:text-ink'}`}>
               {label}
@@ -135,7 +134,7 @@ export function DriversView(props: DriversViewProps) {
         </span>
       </div>
 
-      {(open.length > 0 || done.length > 0) && (
+      {tab === 'review' && (open.length > 0 || done.length > 0) && (
         <section className="rounded-xl border border-line bg-surface">
           <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
             <AlertTriangle className={`h-4 w-4 ${open.length ? 'text-amber-500' : 'text-ink-3'}`} />
@@ -151,6 +150,10 @@ export function DriversView(props: DriversViewProps) {
             {showReviewed && done.map((g) => <ReviewCard key={g.id} group={g} reviewed ids={idsFor(g)} onReview={onReview} onReopen={onReopen} />)}
           </ul>
         </section>
+      )}
+
+      {tab === 'review' && open.length === 0 && done.length === 0 && (
+        <p className="rounded-xl border border-dashed border-line bg-surface p-8 text-center text-sm text-ink-3">No driver or vehicle flags to review.</p>
       )}
 
       {tab === 'report' && (
@@ -171,20 +174,17 @@ export function DriversView(props: DriversViewProps) {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-2">
-                      <tr><th className="px-4 py-2">Driver</th><th className="px-4 py-2">Vehicle</th><th className="px-4 py-2 text-right">Trips</th><th className="px-4 py-2 text-right">Invoices</th><th className="px-4 py-2 text-right">Weight</th><th className="px-4 py-2">Flag</th></tr>
+                      <tr><th className="px-4 py-2">Driver</th><th className="px-4 py-2">Vehicle</th><th className="px-4 py-2 text-right">Trips</th><th className="px-4 py-2">Load</th></tr>
                     </thead>
                     <tbody>
                       {rows.map((r, i) => {
-                        const rowFlags = reportFlags.get(dayRowKey(r)) ?? [];
                         const firstOfDriver = i === 0 || rows[i - 1].driverKey !== r.driverKey;
                         return (
-                          <tr key={dayRowKey(r)} className={`border-t border-line ${rowFlags.length ? 'bg-amber-50/60 dark:bg-amber-500/5' : ''}`}>
+                          <tr key={dayRowKey(r)} className="border-t border-line">
                             <td className="px-4 py-1.5 font-medium">{firstOfDriver ? r.driverName : <span className="text-ink-3">″</span>}</td>
                             <td className="px-4 py-1.5 font-mono text-xs">{r.vehicle || '—'}</td>
                             <td className="px-4 py-1.5 text-right font-mono text-xs">{r.tripCount}</td>
-                            <td className="px-4 py-1.5 text-right font-mono text-xs">{r.invoiceCount}</td>
-                            <td className="px-4 py-1.5 text-right font-mono text-xs">{r.weight.toLocaleString('en-ZA', { maximumFractionDigits: 1 })}</td>
-                            <td className="px-4 py-1.5">{rowFlags.map((f) => <span key={f} className="mr-1 inline-flex rounded-md bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">{DRIVER_FLAG_LABEL[f]}</span>)}</td>
+                            <td className="px-4 py-1.5 text-sm"><span className="font-medium">{r.invoiceCount} invoices</span><span className="ml-2 text-xs text-ink-3">{r.weight.toLocaleString('en-ZA', { maximumFractionDigits: 1 })} kg</span></td>
                           </tr>
                         );
                       })}
@@ -212,11 +212,22 @@ export function DriversView(props: DriversViewProps) {
             {(search || from || to) && <button onClick={() => { setSearch(''); setFrom(''); setTo(''); }} className="btn-ghost h-10 px-3 text-xs">Clear</button>}
           </div>
 
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2">
+            <span className="text-xs font-medium text-ink-2">History view</span>
+            <div className="inline-flex rounded-lg bg-surface-2 p-0.5" role="tablist" aria-label="History view">
+              {([['drivers', 'By driver'], ['days', 'Day by day']] as const).map(([key, label]) => (
+                <button key={key} type="button" role="tab" aria-selected={historyMode === key} onClick={() => setHistoryMode(key)} className={`rounded-md px-3 py-1.5 text-xs font-medium ${historyMode === key ? 'bg-surface text-ink shadow-sm' : 'text-ink-2'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {filtered.length === 0 ? (
             <p className="rounded-xl border border-dashed border-line bg-surface p-8 text-center text-sm text-ink-3">{stored.length === 0 ? 'No driver days saved yet. Load a report and they are added automatically.' : 'Nothing matches that search.'}</p>
           ) : (
             <>
-              <section className="rounded-xl border border-line bg-surface">
+              {historyMode === 'drivers' && <section className="rounded-xl border border-line bg-surface">
                 <h2 className="border-b border-line px-4 py-2.5 text-sm font-semibold">Vehicles each driver used</h2>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -236,9 +247,9 @@ export function DriversView(props: DriversViewProps) {
                     </tbody>
                   </table>
                 </div>
-              </section>
+              </section>}
 
-              <section className="rounded-xl border border-line bg-surface">
+              {historyMode === 'days' && <section className="rounded-xl border border-line bg-surface">
                 <h2 className="border-b border-line px-4 py-2.5 text-sm font-semibold">
                   Day by day <span className="font-normal text-ink-3">· {filtered.length.toLocaleString()} {filtered.length === 1 ? 'entry' : 'entries'}{filtered.length > HISTORY_LIST_LIMIT ? `, showing the latest ${HISTORY_LIST_LIMIT}` : ''}</span>
                 </h2>
@@ -268,7 +279,7 @@ export function DriversView(props: DriversViewProps) {
                     </tbody>
                   </table>
                 </div>
-              </section>
+              </section>}
             </>
           )}
         </>
@@ -276,3 +287,4 @@ export function DriversView(props: DriversViewProps) {
     </div>
   );
 }
+

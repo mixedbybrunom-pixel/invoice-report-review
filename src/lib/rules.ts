@@ -13,12 +13,18 @@ export const REDELIVERY_PATTERN = /re.?load|re.?d[ei]?l[il]?[iy]?v[ea]?r?[yi]?/i
 
 export const INVOICE_RULES = {
   repairs: /^\d{5}$/,
+  collections: /^0900-/i,
   internal: /ACC-SINV/i,
   validStart: /^(00|02)/,
   valid8: /^\d{8}$/,
+  superstructCompound: /^(?:\(\d{8}(?:\s*&\s*\d{8})+\)|\d{8}(?:\s*&\s*\d{8})+)$/,
   // New numbering series introduced in Nov 2026: 7 digits starting with 56 (e.g. 5600014).
   validNew7: /^56\d{5}$/,
 };
+
+export function isSuperstructInvoice(account: string, invoice: string): boolean {
+  return normalizeAccountKey(account) === 'A00135' && INVOICE_RULES.superstructCompound.test(invoice);
+}
 
 export const REQUIRED_COLUMNS = [
   'Invoice No',
@@ -46,3 +52,4 @@ export function isCCLAccount(account: string): boolean {
 export function getCCLLabel(account: string): string {
   return account ? `CCL Internal (${account})` : 'CCL Internal';
 }
+

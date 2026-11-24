@@ -1,7 +1,7 @@
 {
   "name": "invoice-report-review",
   "private": true,
-  "version": "1.21.0",
+  "version": "1.22.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -37,3 +37,4 @@
     "vite": "^7.3.7"
   }
 }
+

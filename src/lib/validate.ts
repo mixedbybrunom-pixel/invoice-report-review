@@ -6,6 +6,7 @@ import {
   REDELIVERY_PATTERN,
   getCCLLabel,
   isCCLAccount,
+  isSuperstructInvoice,
   normalizeAccountKey,
 } from './rules';
 import type {
@@ -193,7 +194,10 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
 
     if (INVOICE_RULES.repairs.test(invoice)) add('For Repairs', 'repairs', 10, true);
     else if (INVOICE_RULES.internal.test(invoice)) add(getCCLLabel(account), 'cclinternal', 20, true);
-    else if (INVOICE_RULES.valid8.test(invoice) && INVOICE_RULES.validStart.test(invoice)) {
+    else if (INVOICE_RULES.collections.test(invoice)) add('Collections invoice', 'collections', 25, false);
+    else if (isSuperstructInvoice(account, invoice)) {
+      // A00135 (Superstruct) uses a compound invoice reference joined by &.
+    } else if (INVOICE_RULES.valid8.test(invoice) && INVOICE_RULES.validStart.test(invoice)) {
       // valid invoice number, no issue
     } else if (INVOICE_RULES.validNew7.test(invoice)) {
       // valid invoice number in the new 56xxxxx series, no issue
@@ -375,3 +379,4 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
 
   return records;
 }
+

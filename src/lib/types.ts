@@ -3,6 +3,7 @@ export type RawRow = Record<string, unknown>;
 export type IssueClass =
   | 'ok'
   | 'repairs'
+  | 'collections'
   | 'cclinternal'
   | 'suspicious'
   | 'error'
@@ -153,3 +154,4 @@ export interface RunHistoryEntry {
   drivers: number;
   dateRange: string;
 }
+

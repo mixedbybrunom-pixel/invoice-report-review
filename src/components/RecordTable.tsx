@@ -407,6 +407,7 @@ function filterClasses(filter: FilterKey): IssueClass[] {
     case 'weightflag': return ['checkweight', 'suspectweight'];
     case 'suspicious': return ['suspicious'];
     case 'repairs': return ['repairs'];
+    case 'collections': return ['collections'];
     case 'cclinternal': return ['cclinternal'];
     case 'redelivery': return ['redelivery'];
     case 'multidriver': return ['multidriver'];

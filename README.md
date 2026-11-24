@@ -1,6 +1,6 @@
 # Invoice Report Review
 
-Version 1.21.0
+Version 1.22.0
 
 Hosted on Cloudflare Workers. Every commit to the main branch is built and deployed automatically.
 
@@ -23,7 +23,7 @@ The invoice-review database is separate from the existing AurumBot project. Revi
 
 ## Invoice number rules
 
-An invoice number is valid when it is `02xxxxxx` or `00xxxxxx` (8 digits), or `56xxxxx` (7 digits, the new series from November 2026). Five-digit numbers are repairs and `ACC-SINV` numbers are internal CCL invoices. Any other 8-digit number is flagged as suspicious, and everything else (for example `026937002`, `791750` or `0000005`) is flagged as an invalid invoice.
+An invoice number is valid when it is `02xxxxxx` or `00xxxxxx` (8 digits), or `56xxxxx` (7 digits, the new series from November 2026). Five-digit numbers are repairs, invoice numbers beginning `0900-` are Collections, and `ACC-SINV` numbers are internal CCL invoices. For account `A00135` (SUPERSTRUCT), compound references such as `(01000849& 01000849)` are accepted. Any other 8-digit number is flagged as suspicious, and everything else (for example `026937002`, `791750` or `0000005`) is flagged as an invalid invoice.
 
 ## Team access
 
@@ -52,6 +52,12 @@ Then start the app and check the review flow:
 3. Change a row in the report and upload the edited report; it should have a separate review state.
 4. Sign in from another authorized browser profile and confirm the saved resolution is shared.
 
+
+## What's new in 1.22.0
+
+- **Collections filter**: invoice numbers beginning `0900-` appear in their own sidebar view. Collections rules remain intentionally lightweight while the review logic is being worked out.
+- **SUPERSTRUCT invoice format**: account `A00135` accepts compound eight-digit references joined by `&`, including the parenthesized format.
+- **Clearer drivers and vehicles page**: report days, review flags, and history are separated into tabs; history can be viewed by driver or day.
 
 ## What's new in 1.21.0
 

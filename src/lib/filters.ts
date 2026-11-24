@@ -34,6 +34,7 @@ export type FilterKey =
   | 'weightflag'
   | 'suspicious'
   | 'repairs'
+  | 'collections'
   | 'cclinternal'
   | 'redelivery'
   | 'dropship'
@@ -56,7 +57,7 @@ export const FILTERS: FilterDef[] = [
   { key: 'needsaction', label: 'Needs action', description: 'Flagged and not yet resolved', icon: Clock, text: 'text-amber-600 dark:text-amber-400', chip: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400' },
   { key: 'resolved', label: 'Resolutions', description: 'Invoices that have been resolved', icon: Undo2, text: 'text-emerald-600 dark:text-emerald-400', chip: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400' },
   { key: 'ok', label: 'Clean', description: 'No issues found', icon: CheckCircle2, text: 'text-emerald-600 dark:text-emerald-400', chip: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400' },
-  { key: 'error', label: 'Invalid invoice', description: 'Invoice number is not 02xxxxxx, 56xxxxx, 5 digits or ACC-SINV', icon: XCircle, text: 'text-red-600 dark:text-red-400', chip: 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400' },
+  { key: 'error', label: 'Invalid invoice', description: 'Invoice number is outside the approved formats', icon: XCircle, text: 'text-red-600 dark:text-red-400', chip: 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400' },
   { key: 'zero', label: 'Zero weight', description: 'Weight is zero or missing', icon: Scale, text: 'text-amber-600 dark:text-amber-400', chip: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400' },
   { key: 'duplicate', label: 'Duplicates / conflicts', description: 'Same invoice appears more than once', icon: Layers, text: 'text-orange-600 dark:text-orange-400', chip: 'bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400' },
   { key: 'mismatch', label: 'Territory mismatch', description: 'Territory differs from master file', icon: MapPin, text: 'text-amber-600 dark:text-amber-400', chip: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400' },
@@ -64,6 +65,7 @@ export const FILTERS: FilterDef[] = [
   { key: 'weightflag', label: 'Weight flags', description: 'Heavy weight for the quantity', icon: Scale, text: 'text-yellow-600 dark:text-yellow-400', chip: 'bg-yellow-50 text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-400' },
   { key: 'suspicious', label: 'Suspicious invoice no', description: 'Invoice number looks wrong', icon: ShieldAlert, text: 'text-red-700 dark:text-red-400', chip: 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400' },
   { key: 'repairs', label: 'For repairs', description: 'Repair jobs', icon: Wrench, text: 'text-teal-600 dark:text-teal-400', chip: 'bg-teal-50 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400' },
+  { key: 'collections', label: 'Collections', description: 'Collection invoices beginning 0900-', icon: PackageCheck, text: 'text-indigo-600 dark:text-indigo-400', chip: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400' },
   { key: 'cclinternal', label: 'CCL internal', description: 'Internal CCL accounts', icon: Building2, text: 'text-sky-600 dark:text-sky-400', chip: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400' },
   { key: 'redelivery', label: 'Redeliveries', description: 'Details mention a redelivery', icon: Truck, text: 'text-violet-600 dark:text-violet-400', chip: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400' },
   { key: 'dropship', label: 'Drop shipments', description: 'Needs your confirmation each time', icon: PackageCheck, text: 'text-indigo-600 dark:text-indigo-400', chip: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400' },
@@ -99,6 +101,7 @@ export function matchesFilter(r: ValidatedRecord, key: FilterKey, res: Resolutio
     case 'weightflag': return has('checkweight') || has('suspectweight');
     case 'suspicious': return has('suspicious');
     case 'repairs': return r.primaryCls === 'repairs';
+    case 'collections': return has('collections');
     case 'cclinternal': return r.isCCLAccount;
     case 'redelivery': return r.isRedelivery;
     case 'dropship': return r.isDropship;
@@ -132,6 +135,7 @@ export const STATUS_LABEL: Record<string, string> = {
   suspectweight: 'Weight flag',
   suspicious: 'Suspicious',
   repairs: 'Repairs',
+  collections: 'Collections invoice',
   cclinternal: 'CCL internal',
   multidriver: 'Multi-driver',
   redelivery: 'Redelivery',
@@ -155,6 +159,7 @@ export const BADGE_CLASS: Record<string, string> = {
   checkweight: 'bg-yellow-50 text-yellow-800 ring-yellow-600/20 dark:bg-yellow-500/15 dark:text-yellow-300 dark:ring-yellow-400/30',
   suspectweight: 'bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-400/30',
   repairs: 'bg-teal-50 text-teal-700 ring-teal-600/20 dark:bg-teal-500/15 dark:text-teal-300 dark:ring-teal-400/30',
+  collections: 'bg-indigo-50 text-indigo-700 ring-indigo-600/20 dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-indigo-400/30',
   cclinternal: 'bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-400/30',
   multidriver: 'bg-cyan-50 text-cyan-800 ring-cyan-600/20 dark:bg-cyan-500/15 dark:text-cyan-300 dark:ring-cyan-400/30',
   redelivery: 'bg-violet-50 text-violet-700 ring-violet-600/20 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-400/30',
@@ -166,6 +171,7 @@ export const BADGE_CLASS: Record<string, string> = {
 /** Faint row tint for the primary status. */
 export const ROW_TINT: Record<string, string> = {
   error: 'bg-red-50/60 dark:bg-white/[0.018]',
+  collections: 'bg-indigo-50/50 dark:bg-indigo-500/[0.04]',
   suspicious: 'bg-red-50/60 dark:bg-white/[0.018]',
   mismatch: 'bg-amber-50/60 dark:bg-white/[0.018]',
   zero: 'bg-amber-50/60 dark:bg-white/[0.018]',
@@ -181,3 +187,4 @@ export const ROW_TINT: Record<string, string> = {
   redelivery: 'bg-violet-50/60 dark:bg-white/[0.018]',
   dropship: 'bg-indigo-50/60 dark:bg-white/[0.018]',
 };
+
