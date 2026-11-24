@@ -17,6 +17,7 @@ import type {
   RawRow,
   ValidatedRecord,
 } from './types';
+import { formatDriverDate, parseDeliveryDate } from './drivers';
 
 const text = (v: unknown) => String(v ?? '').trim();
 
@@ -171,6 +172,43 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
   }
 
   const records: ValidatedRecord[] = [];
+  const invoiceRows = new Map<string, Array<{ index: number; date: string | null; driver: string; failed: boolean }>>();
+  const parsedDates = rows.map((row) => parseDeliveryDate(row['Delivery Date']));
+  const sortedDates = parsedDates.filter((date): date is string => !!date).sort();
+  const reportThrough = sortedDates[sortedDates.length - 1] ?? null;
+  rows.forEach((row, index) => {
+    const p = prepared[index];
+    if (!p) return;
+    const occurrences = invoiceRows.get(p.invoice) ?? [];
+    occurrences.push({
+      index,
+      date: parsedDates[index],
+      driver: text(row['Driver Name']),
+      failed: /delivery\s+failed/i.test(text(row['Details'])),
+    });
+    invoiceRows.set(p.invoice, occurrences);
+  });
+  const deliveryFailureHistoryByInvoice = new Map<string, NonNullable<ValidatedRecord['deliveryFailureHistory']>>();
+  for (const [invoice, occurrences] of invoiceRows) {
+    const failures = occurrences.filter((occurrence) => occurrence.failed);
+    if (!failures.length) continue;
+    const datedFailures = failures.filter((occurrence) => occurrence.date).sort((a, b) => a.date!.localeCompare(b.date!));
+    const latestFailure = datedFailures[datedFailures.length - 1] ?? failures[failures.length - 1];
+    const laterCapture = latestFailure.date
+      ? occurrences
+          .filter((occurrence) => occurrence.date && occurrence.date > latestFailure.date!)
+          .sort((a, b) => a.date!.localeCompare(b.date!))[0]
+      : undefined;
+    deliveryFailureHistoryByInvoice.set(invoice, {
+      failedAttempts: failures.length,
+      latestFailedOn: latestFailure.date ? formatDriverDate(latestFailure.date) : null,
+      latestFailedDriver: latestFailure.driver,
+      capturedAgainOn: laterCapture?.date ? formatDriverDate(laterCapture.date) : null,
+      capturedAgainDriver: laterCapture?.driver ?? '',
+      capturedAgainAlsoFailed: laterCapture?.failed ?? false,
+      reportThrough: reportThrough ? formatDriverDate(reportThrough) : null,
+    });
+  }
 
   rows.forEach((row, rowIdx) => {
     const p = prepared[rowIdx];
@@ -182,6 +220,20 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
     const customer = p.customer;
     const vehicle = pickFirst(row, ['Vehicle', 'Vehicle No', 'Vehicle Reg', 'Vehicle Registration', 'Reg No']);
     const details = text(row['Details']);
+    const isDeliveryFailed = /delivery\s+failed/i.test(details);
+    const failedDate = parsedDates[rowIdx];
+    const laterCapture = isDeliveryFailed && failedDate
+      ? (invoiceRows.get(invoice) ?? [])
+          .filter((occurrence) => occurrence.index !== rowIdx && occurrence.date && occurrence.date > failedDate)
+          .sort((a, b) => a.date!.localeCompare(b.date!))[0]
+      : undefined;
+    const deliveryFailureInfo = isDeliveryFailed ? {
+      failedOn: failedDate ? formatDriverDate(failedDate) : null,
+      capturedAgainOn: laterCapture?.date ? formatDriverDate(laterCapture.date) : null,
+      capturedAgainDriver: laterCapture?.driver ?? '',
+      capturedAgainAlsoFailed: laterCapture?.failed ?? false,
+      reportThrough: reportThrough ? formatDriverDate(reportThrough) : null,
+    } : null;
     const isCCL = isCCLAccount(account);
 
     const issues: Issue[] = [];
@@ -363,6 +415,9 @@ export function validateRows(rows: RawRow[], master: MasterData): ValidatedRecor
       issues,
       isCCLAccount: isCCL,
       isRedelivery,
+      isDeliveryFailed,
+      deliveryFailureInfo,
+      deliveryFailureHistory: deliveryFailureHistoryByInvoice.get(invoice) ?? null,
       isDropship: p.dropship,
       dropshipSource: p.dropshipSource,
       isMismatch,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, CheckCheck, CloudUpload, Download, KeyRound, LogOut, Menu, Moon, RefreshCw, Sun, UserPlus } from 'lucide-react';
+import { Activity, CheckCheck, CloudUpload, Download, KeyRound, LogOut, Menu, Moon, RefreshCw, Sun, Truck, UserPlus } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { FILTER_BY_KEY, countFilters, matchesFilter, type FilterKey } from '@/lib/filters';
 import { fetchMasterFromServer, EMPTY_MASTER, masterAccountCount, collectUnknownAccounts } from '@/lib/master';
@@ -104,6 +104,21 @@ export default function App() {
       (r) => matchesFilter(r, filter, resolutions[String(r.id)]) && (!q || r.searchText.includes(q)),
     );
   }, [records, filter, search, resolutions]);
+  const deliveryFailureInvoiceCount = useMemo(
+    () => new Set(visible.map((record) => record.invoiceNo)).size,
+    [visible],
+  );
+  const deliveryFailureSearchSummary = useMemo(() => {
+    const query = search.trim().toUpperCase();
+    if (!query || filter === 'deliveryfailed') return null;
+    const matches = new Map<string, ValidatedRecord>();
+    for (const record of records) {
+      if (record.invoiceNo.includes(query) && record.deliveryFailureHistory) matches.set(record.invoiceNo, record);
+    }
+    if (matches.size !== 1) return null;
+    const record = matches.values().next().value as ValidatedRecord | undefined;
+    return record ? { invoiceNo: record.invoiceNo, history: record.deliveryFailureHistory! } : null;
+  }, [records, search, filter]);
 
   const checkedRecords = useMemo(() => records.filter((record) => checked.has(record.id)), [records, checked]);
 
@@ -406,6 +421,7 @@ export default function App() {
 
   const changeFilter = (key: FilterKey) => {
     setFilter(key);
+    if (key === 'deliveryfailed') setGroupByAccount(false);
     setView('invoices');
     setChecked(new Set());
     setSidebarOpen(false);
@@ -519,7 +535,7 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <span className="rounded-lg bg-accent-soft px-3 py-2 font-medium text-accent-ink">{visible.length.toLocaleString()} shown</span>
-                  <span className="rounded-lg bg-surface-2 px-3 py-2 text-ink-2">{counts.needsaction.toLocaleString()} need action</span>
+                  <span className="rounded-lg bg-surface-2 px-3 py-2 text-ink-2">{filter === 'deliveryfailed' ? `${deliveryFailureInvoiceCount.toLocaleString()} invoice numbers` : `${counts.needsaction.toLocaleString()} need action`}</span>
                 </div>
               </section>
               <div className="flex flex-wrap items-center gap-3">
@@ -548,6 +564,25 @@ export default function App() {
                   </button>
                 )}
               </div>
+
+              {deliveryFailureSearchSummary && (
+                <section className="flex flex-wrap items-center gap-3 rounded-xl border border-orange-200 bg-orange-50/70 px-4 py-3 dark:border-orange-400/20 dark:bg-orange-500/5">
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-orange-800 dark:text-orange-300">
+                      <Truck className="h-4 w-4 shrink-0" /> Delivery failure found · <span className="font-mono">{deliveryFailureSearchSummary.invoiceNo}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-ink-2">
+                      {deliveryFailureSearchSummary.history.failedAttempts} failed attempt{deliveryFailureSearchSummary.history.failedAttempts === 1 ? '' : 's'}
+                      {deliveryFailureSearchSummary.history.latestFailedOn ? ` · latest ${deliveryFailureSearchSummary.history.latestFailedOn}` : ''}
+                      {deliveryFailureSearchSummary.history.latestFailedDriver ? ` · ${deliveryFailureSearchSummary.history.latestFailedDriver}` : ''}
+                      {deliveryFailureSearchSummary.history.capturedAgainOn
+                        ? ` · same invoice captured again ${deliveryFailureSearchSummary.history.capturedAgainOn}`
+                        : ` · no later capture in this report${deliveryFailureSearchSummary.history.reportThrough ? ` through ${deliveryFailureSearchSummary.history.reportThrough}` : ''}`}
+                    </p>
+                  </div>
+                  <button onClick={() => changeFilter('deliveryfailed')} className="btn-secondary h-9 text-xs">View delivery fail rows</button>
+                </section>
+              )}
 
               {checked.size > 0 && (
                 <section className="sticky bottom-2 z-30 flex flex-wrap items-center gap-3 rounded-xl border border-accent/30 bg-surface/95 p-3 shadow-lg backdrop-blur animate-pop-in">

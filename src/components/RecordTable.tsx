@@ -278,6 +278,9 @@ export function RecordTable({
                   <td className="px-3">
                     <span className="font-mono text-xs font-medium">{r.invoiceNo}</span>
                     {r.documentId !== '-' && <div className="font-mono text-xs text-ink-3">{r.documentId}</div>}
+                    {activeFilter === 'deliveryfailed' && r.deliveryFailureInfo?.failedOn && (
+                      <div className="text-[11px] text-orange-700 dark:text-orange-300">Failed {r.deliveryFailureInfo.failedOn}</div>
+                    )}
                   </td>
                   <td className="max-w-[180px] truncate px-3 text-ink-2">{r.driverName || '-'}</td>
                   <td className="max-w-[220px] px-3">
@@ -288,15 +291,28 @@ export function RecordTable({
                   <td className="px-3 text-right font-mono text-xs tabular-nums">{r.weight.toLocaleString()}</td>
                   <td className="px-3">
                     <div className="flex min-w-0 items-center gap-1.5">
-                      <span
+                      {activeFilter === 'deliveryfailed' && r.deliveryFailureInfo ? (
+                        <div className="flex min-w-0 flex-col items-start gap-0.5">
+                          <span className="inline-flex rounded-md bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-600/20 dark:bg-orange-500/15 dark:text-orange-300">
+                            Delivery Failed
+                          </span>
+                          <span className="truncate text-[11px] text-ink-3">
+                            {r.deliveryFailureInfo.capturedAgainOn
+                              ? `${r.deliveryFailureInfo.capturedAgainAlsoFailed ? 'Failed again' : 'Captured again'} · ${r.deliveryFailureInfo.capturedAgainOn}`
+                              : r.deliveryFailureInfo.reportThrough
+                                ? `No later capture through ${r.deliveryFailureInfo.reportThrough}`
+                                : 'No later capture found'}
+                          </span>
+                        </div>
+                      ) : <span
                         title={orderedIssues.map((issue) => issue.status).join(' · ') || 'Clean'}
                         className={`inline-flex max-w-[440px] items-center gap-1 whitespace-nowrap truncate rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
                           BADGE_CLASS[visibleClass] ?? BADGE_CLASS.ok
                         }`}
                       >
                         <span className="truncate">{cleanLabel || !selectedIssue ? 'Clean' : selectedIssue.status}</span>
-                      </span>
-                      {orderedIssues.length > 1 && <span className="shrink-0 text-xs text-ink-3">+{orderedIssues.length - 1} more</span>}
+                      </span>}
+                      {activeFilter !== 'deliveryfailed' && orderedIssues.length > 1 && <span className="shrink-0 text-xs text-ink-3">+{orderedIssues.length - 1} more</span>}
                       {resolved && (
                         <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-500/15 dark:text-slate-300">
                           <Check className="h-3 w-3" /> Resolved
@@ -366,7 +382,9 @@ export function RecordTable({
                         <span className="block font-mono text-sm font-semibold text-ink">{r.invoiceNo}</span>
                         <span className="mt-0.5 block truncate text-sm font-medium text-ink">{r.customer || 'Customer not listed'}</span>
                       </span>
-                      <span className={`max-w-[48%] truncate rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${BADGE_CLASS[issueClass] ?? BADGE_CLASS.ok}`}>{issue?.status ?? 'Clean'}</span>
+                      {activeFilter === 'deliveryfailed' && r.deliveryFailureInfo ? (
+                        <span className="max-w-[48%] truncate rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-600/20 dark:bg-orange-500/15 dark:text-orange-300">Delivery Failed</span>
+                      ) : <span className={`max-w-[48%] truncate rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${BADGE_CLASS[issueClass] ?? BADGE_CLASS.ok}`}>{issue?.status ?? 'Clean'}</span>}
                     </span>
                     <span className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-ink-2">
                       <span>Account <b className="font-mono">{r.account || '—'}</b></span>
@@ -374,6 +392,13 @@ export function RecordTable({
                       <span>Territory <b className="font-mono">{r.territory || '—'}</b></span>
                       <span>Weight <b className="font-mono">{r.weight.toLocaleString()}</b></span>
                     </span>
+                    {activeFilter === 'deliveryfailed' && r.deliveryFailureInfo && (
+                      <span className="mt-2 block text-xs text-ink-3">
+                        Failed {r.deliveryFailureInfo.failedOn ?? 'date unavailable'} · {r.deliveryFailureInfo.capturedAgainOn
+                          ? `${r.deliveryFailureInfo.capturedAgainAlsoFailed ? 'failed again' : 'captured again'} ${r.deliveryFailureInfo.capturedAgainOn}`
+                          : `no later capture in this report${r.deliveryFailureInfo.reportThrough ? ` through ${r.deliveryFailureInfo.reportThrough}` : ''}`}
+                      </span>
+                    )}
                     <span className="mt-2 flex items-center gap-2 text-xs text-ink-3">
                       {r.documentId !== '-' && <span className="truncate font-mono">Doc {r.documentId}</span>}
                       {orderedIssues.length > 1 && <span>+{orderedIssues.length - 1} more flags</span>}
