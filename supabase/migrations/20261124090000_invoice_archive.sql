@@ -53,7 +53,7 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  if new.delivery_date < current_date - 30 or new.delivery_date > current_date then
+  if new.delivery_date < current_date - 29 or new.delivery_date > current_date then
     raise exception 'Invoice archive imports must be limited to the previous 30 days';
   end if;
   return new;

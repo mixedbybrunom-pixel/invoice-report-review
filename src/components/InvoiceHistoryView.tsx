@@ -81,7 +81,7 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
     setUploading(true); setUploadError(''); setProgress('Reading report…');
     try {
       const parsed = await readReport(file);
-      const since = dateInJohannesburgDaysAgo(30);
+      const since = dateInJohannesburgDaysAgo(29);
       const today = dateInJohannesburgDaysAgo(0);
       const datedRows = parsed.rows.map((row) => ({ row, date: parseDeliveryDate(row['Delivery Date']) }));
       const undated = datedRows.filter((x) => !x.date).length;
