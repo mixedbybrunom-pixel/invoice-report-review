@@ -546,10 +546,25 @@ export default function App() {
                   <span className="text-sm text-ink-3">Only the admin can add accounts to the master file.</span>
                 )}
                 {isAdmin && filter === 'unknownaccount' && unknownAccounts.length > 0 && (
-                  <button onClick={pushAccountsFromChecked} className="btn-primary h-10" title="Add these accounts to the master file">
-                    <CloudUpload className="h-4 w-4" />
-                    Push account{unknownAccounts.length === 1 ? '' : 's'} to master file
-                  </button>
+                  <>
+                    <label className="relative block min-w-[220px] flex-1 sm:max-w-xs">
+                      <span className="sr-only">Upload key for adding accounts</span>
+                      <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
+                      <input
+                        type="password"
+                        autoComplete="off"
+                        value={uploadKey}
+                        onChange={(event) => setUploadKey(event.target.value)}
+                        placeholder="Upload key"
+                        aria-label="Upload key for adding accounts"
+                        className="field h-10 pl-9"
+                      />
+                    </label>
+                    <button onClick={pushAccountsFromChecked} className="btn-primary h-10" title="Add these accounts to the master file">
+                      <CloudUpload className="h-4 w-4" />
+                      Push account{unknownAccounts.length === 1 ? '' : 's'} to master file
+                    </button>
+                  </>
                 )}
               </div>
 
