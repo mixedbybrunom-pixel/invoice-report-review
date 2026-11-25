@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { AlertCircle, CheckCircle2, Clock3, Database, FileUp, Loader2, Search, Truck, XCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronRight, Clock3, Database, FileUp, Loader2, Search, XCircle } from 'lucide-react';
 import { readReport } from '@/lib/workbook';
 import { INVOICE_RULES, isSuperstructInvoice, normalizeAccountKey } from '@/lib/rules';
 import { parseDeliveryDate } from '@/lib/drivers';
 import { supabase } from '@/lib/supabase';
 import type { RawRow } from '@/lib/types';
+import { Modal } from '@/components/ui/Modal';
 
 type ArchiveEvent = {
   event_key: string; invoice_no: string; account_no: string; customer_name: string;
@@ -39,6 +40,7 @@ async function makeEventKey(row: Omit<ArchiveEvent, 'event_key' | 'outcome'>) {
 export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?: 'success' | 'error', detail?: string) => void }) {
   const [query, setQuery] = useState('');
   const [events, setEvents] = useState<ArchiveEvent[]>([]);
+  const [selectedInvoice, setSelectedInvoice] = useState<ArchiveEvent[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -74,7 +76,7 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
       const key = `${event.account_no}\u0000${event.invoice_no}`;
       map.set(key, [...(map.get(key) ?? []), event]);
     }
-    return [...map.values()];
+    return [...map.values()].map((group) => group.sort((a, b) => b.delivery_date.localeCompare(a.delivery_date)));
   }, [events]);
 
   const importReport = async (file: File) => {
@@ -136,19 +138,72 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
         <button onClick={() => inputRef.current?.click()} disabled={uploading} className="btn-primary min-h-11"><FileUp className="h-4 w-4"/>{uploading ? 'Importing…' : 'Import report through yesterday'}</button>
         <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e: ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) void importReport(file); }}/>
       </div>
-      <p className="mt-4 rounded-lg bg-surface-2 px-3 py-2 text-xs text-ink-2">Delivery result is determined from <b>Details</b>: blank means delivered; “Delivery Failed” means failed; any other text is unconfirmed. The spreadsheet Status field is ignored.</p>
       {(progress || uploadError) && <div className={`mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${uploadError ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300' : 'bg-accent-soft text-accent-ink'}`}>{uploadError ? <AlertCircle className="h-4 w-4 shrink-0"/> : <Loader2 className="h-4 w-4 animate-spin"/>}{progress || uploadError}</div>}
     </section>
     <label className="relative block"><Search className="absolute left-3 top-3 h-4 w-4 text-ink-3"/><input className="field pl-10" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search invoice number, account, or customer"/></label>
     {loadError && <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">{loadError}</div>}
     <div className="flex items-center gap-2 text-sm text-ink-2">{loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <Database className="h-4 w-4"/>}{grouped.length.toLocaleString()} invoice{grouped.length === 1 ? '' : 's'} shown{events.length === 200 ? ' · showing the latest 200 matches' : ''}</div>
-    <div className="grid gap-3">{grouped.map((group) => {
-      const first = group[0]; const delivered = group.filter((e) => e.outcome === 'delivered').length; const failed = group.filter((e) => e.outcome === 'failed').length; const other = group.filter((e) => e.outcome === 'other').length;
-      return <article key={`${first.account_no}-${first.invoice_no}`} className="rounded-xl border border-line bg-surface p-4 shadow-sm md:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-mono text-lg font-semibold">{first.invoice_no}</h3><p className="mt-1 text-sm font-medium">{first.customer_name || 'Customer name unavailable'} <span className="font-mono text-ink-3">· {first.account_no}</span></p></div><div className="flex flex-wrap gap-2 text-xs"><span className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200"><CheckCircle2 className="mr-1 inline h-3.5 w-3.5"/>{delivered} delivered</span><span className="rounded-md bg-red-50 px-2 py-1 text-red-800 dark:bg-red-500/15 dark:text-red-200"><XCircle className="mr-1 inline h-3.5 w-3.5"/>{failed} failed</span>{other > 0 && <span className="rounded-md bg-amber-50 px-2 py-1 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">{other} unconfirmed</span>}</div></div>
-        <ol className="mt-4 space-y-2 border-l border-line pl-4">{group.sort((a,b) => b.delivery_date.localeCompare(a.delivery_date)).map((event) => <li key={event.event_key} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-accent"/><div className="flex flex-wrap items-baseline gap-x-2"><b>{event.delivery_date}</b><span className="text-ink-2">{event.outcome === 'delivered' ? 'Delivered (Details blank)' : event.outcome === 'failed' ? 'Delivery failed' : `Not confirmed · ${event.details}`}</span></div><p className="mt-0.5 text-xs text-ink-3">{event.driver_name || 'Driver unavailable'}{event.document_id ? ` · Doc ${event.document_id}` : ''}{event.vehicle ? ` · ${event.vehicle}` : ''}</p></li>)}</ol>
-      </article>;
+    <div className="grid gap-2">{grouped.map((group) => {
+      const first = group[0];
+      const latest = group[0];
+      const delivered = group.filter((event) => event.outcome === 'delivered').length;
+      const failed = group.filter((event) => event.outcome === 'failed').length;
+      const other = group.filter((event) => event.outcome === 'other').length;
+      return <button
+        key={`${first.account_no}-${first.invoice_no}`}
+        type="button"
+        onClick={() => setSelectedInvoice(group)}
+        aria-label={`View ${group.length} delivery records for invoice ${first.invoice_no}`}
+        className="group flex w-full flex-wrap items-center gap-x-5 gap-y-3 rounded-xl border border-line bg-surface px-4 py-3 text-left shadow-sm transition hover:border-accent/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent md:px-5"
+      >
+        <div className="min-w-[180px] flex-1">
+          <h3 className="font-mono text-base font-semibold">{first.invoice_no}</h3>
+          <p className="mt-0.5 truncate text-sm font-medium text-ink-2">{first.customer_name || 'Customer name unavailable'} <span className="font-mono text-ink-3">· {first.account_no}</span></p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-md bg-surface-2 px-2 py-1 text-ink-2">{group.length} {group.length === 1 ? 'delivery record' : 'delivery records'}</span>
+          {delivered > 0 && <span className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200"><CheckCircle2 className="mr-1 inline h-3.5 w-3.5"/>{delivered} delivered</span>}
+          {failed > 0 && <span className="rounded-md bg-red-50 px-2 py-1 text-red-800 dark:bg-red-500/15 dark:text-red-200"><XCircle className="mr-1 inline h-3.5 w-3.5"/>{failed} failed</span>}
+          {other > 0 && <span className="rounded-md bg-amber-50 px-2 py-1 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">{other} unconfirmed</span>}
+        </div>
+        <div className="flex items-center gap-2 text-xs text-ink-3"><span>Latest: {latest.delivery_date} · {latest.outcome === 'delivered' ? 'Delivered' : latest.outcome === 'failed' ? 'Failed' : 'Unconfirmed'}</span><ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5"/></div>
+      </button>;
     })}</div>
+    {selectedInvoice && (() => {
+      const first = selectedInvoice[0];
+      const delivered = selectedInvoice.filter((event) => event.outcome === 'delivered').length;
+      const failed = selectedInvoice.filter((event) => event.outcome === 'failed').length;
+      const other = selectedInvoice.filter((event) => event.outcome === 'other').length;
+      return <Modal
+        title={`Invoice ${first.invoice_no}`}
+        subtitle={`${first.customer_name || 'Customer name unavailable'} · Account ${first.account_no}`}
+        onClose={() => setSelectedInvoice(null)}
+        width="lg"
+      >
+        <div className="space-y-5">
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="rounded-md bg-surface-2 px-2.5 py-1.5 text-ink-2">{selectedInvoice.length} {selectedInvoice.length === 1 ? 'delivery record' : 'delivery records'}</span>
+            {delivered > 0 && <span className="rounded-md bg-emerald-50 px-2.5 py-1.5 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200">{delivered} delivered</span>}
+            {failed > 0 && <span className="rounded-md bg-red-50 px-2.5 py-1.5 text-red-800 dark:bg-red-500/15 dark:text-red-200">{failed} failed</span>}
+            {other > 0 && <span className="rounded-md bg-amber-50 px-2.5 py-1.5 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">{other} unconfirmed</span>}
+          </div>
+          <ol className="space-y-3">
+            {selectedInvoice.map((event) => <li key={event.event_key} className="rounded-xl border border-line bg-surface-2/50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <b className="text-sm">{event.delivery_date}</b>
+                <span className={`rounded-md px-2 py-1 text-xs font-medium ${event.outcome === 'delivered' ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200' : event.outcome === 'failed' ? 'bg-red-50 text-red-800 dark:bg-red-500/15 dark:text-red-200' : 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200'}`}>
+                  {event.outcome === 'delivered' ? 'Delivered' : event.outcome === 'failed' ? 'Delivery failed' : 'Unconfirmed'}
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-ink-2">{event.driver_name || 'Driver unavailable'}{event.vehicle ? ` · ${event.vehicle}` : ''}{event.document_id ? ` · Document ${event.document_id}` : ''}</p>
+              {(event.quantity != null || event.weight != null) && <p className="mt-1 text-xs text-ink-3">{event.quantity != null ? `Quantity ${event.quantity}` : ''}{event.quantity != null && event.weight != null ? ' · ' : ''}{event.weight != null ? `Weight ${event.weight}` : ''}</p>}
+              {event.details && <p className="mt-2 text-xs text-ink-3">Report note: {event.details}</p>}
+              {event.source_report_name && <p className="mt-2 truncate text-xs text-ink-3" title={event.source_report_name}>Source: {event.source_report_name}</p>}
+            </li>)}
+          </ol>
+        </div>
+      </Modal>;
+    })()}
     {!loading && !loadError && !grouped.length && <div className="rounded-xl border border-dashed border-line-strong bg-surface p-10 text-center text-sm text-ink-3"><Clock3 className="mx-auto mb-3 h-6 w-6"/>{query ? 'No matching invoices found in archived history.' : 'No invoice history yet. Import a separate report; any date range is accepted, and today’s rows are skipped.'}</div>}
   </div>;
 }
