@@ -81,16 +81,16 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
     setUploading(true); setUploadError(''); setProgress('Reading report…');
     try {
       const parsed = await readReport(file);
-      const since = dateInJohannesburgDaysAgo(29);
       const today = dateInJohannesburgDaysAgo(0);
       const datedRows = parsed.rows.map((row) => ({ row, date: parseDeliveryDate(row['Delivery Date']) }));
       const undated = datedRows.filter((x) => !x.date).length;
-      const inRange = datedRows.filter((x) => x.date && x.date >= since && x.date <= today);
-      const outside = datedRows.filter((x) => x.date && (x.date < since || x.date > today)).length;
-      if (outside > 0) throw new Error(`This report includes ${outside.toLocaleString()} rows outside the last 30 days (${since} to ${today}). No rows were imported. Export a clean 30-day report.`);
-      if (!inRange.length) throw new Error(`No dated rows found within the allowed window (${since} to ${today}). Nothing was imported.`);
+      const futureRows = datedRows.filter((x) => x.date && x.date > today).length;
+      if (futureRows > 0) throw new Error(`This report includes ${futureRows.toLocaleString()} future-dated rows. No rows were imported.`);
+      const skippedToday = datedRows.filter((x) => x.date === today).length;
+      const historicalRows = datedRows.filter((x) => x.date && x.date < today);
+      if (!historicalRows.length) throw new Error('No historical rows found. Rows dated today are not imported; nothing was saved.');
       const unique = new Map<string, ArchiveWrite>();
-      for (const { row, date } of inRange) {
+      for (const { row, date } of historicalRows) {
         if (!date) continue;
         const invoice = str(row['Invoice No']).toUpperCase();
         const account = normalizeAccountKey(row['Customer']);
@@ -107,7 +107,7 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
         unique.set([invoice, account, date, base.document_id, base.driver_name, base.vehicle, details].join('|'), base);
       }
       const prepared = [...unique.values()];
-      if (!prepared.length) throw new Error('No valid invoice numbers were found in the 30-day report. Nothing was imported.');
+      if (!prepared.length) throw new Error('No valid invoice numbers were found in this report. Nothing was imported.');
       const payload: ArchiveUpsert[] = [];
       for (let i = 0; i < prepared.length; i += 1) {
         const row = prepared[i];
@@ -120,7 +120,8 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
         setProgress(`Saving batch ${i + 1} of ${chunks.length} · ${Math.min((i + 1) * 400, payload.length).toLocaleString()} of ${payload.length.toLocaleString()} invoices`);
       }
       setProgress('');
-      notify(`Invoice history refreshed with ${payload.length.toLocaleString()} valid invoice events`, 'success', `${since} to ${today}${undated ? ` · skipped ${undated} rows without delivery dates` : ''}`);
+      const throughYesterday = dateInJohannesburgDaysAgo(1);
+      notify(`Invoice history refreshed with ${payload.length.toLocaleString()} valid invoice events`, 'success', `Data through ${throughYesterday}${skippedToday ? ` · skipped ${skippedToday.toLocaleString()} rows dated today` : ''}${undated ? ` · skipped ${undated.toLocaleString()} rows without delivery dates` : ''}`);
       setRefreshToken((value) => value + 1);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not import this report.';
@@ -131,8 +132,8 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
   return <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
     <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm md:p-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><p className="text-xs font-semibold tracking-wide text-accent">PERMANENT INVOICE DATABASE</p><h2 className="mt-1 text-2xl font-semibold">Invoice history</h2><p className="mt-2 max-w-2xl text-sm text-ink-2">Search invoice events across archived reports. Only refresh this database with a separate report covering the last 30 days. Daily review uploads do not update it.</p></div>
-        <button onClick={() => inputRef.current?.click()} disabled={uploading} className="btn-primary min-h-11"><FileUp className="h-4 w-4"/>{uploading ? 'Refreshing…' : 'Refresh last 30 days'}</button>
+        <div><p className="text-xs font-semibold tracking-wide text-accent">INVOICE DATABASE</p><h2 className="mt-1 text-2xl font-semibold">Invoice history</h2><p className="mt-2 max-w-2xl text-sm text-ink-2">Search invoice events across archived reports. Upload a separate, clean report of any length; rows dated today are skipped. Daily review uploads do not update this archive.</p></div>
+        <button onClick={() => inputRef.current?.click()} disabled={uploading} className="btn-primary min-h-11"><FileUp className="h-4 w-4"/>{uploading ? 'Importing…' : 'Import report through yesterday'}</button>
         <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e: ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) void importReport(file); }}/>
       </div>
       <p className="mt-4 rounded-lg bg-surface-2 px-3 py-2 text-xs text-ink-2">Delivery result is determined from <b>Details</b>: blank means delivered; “Delivery Failed” means failed; any other text is unconfirmed. The spreadsheet Status field is ignored.</p>
@@ -148,7 +149,7 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
         <ol className="mt-4 space-y-2 border-l border-line pl-4">{group.sort((a,b) => b.delivery_date.localeCompare(a.delivery_date)).map((event) => <li key={event.event_key} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-accent"/><div className="flex flex-wrap items-baseline gap-x-2"><b>{event.delivery_date}</b><span className="text-ink-2">{event.outcome === 'delivered' ? 'Delivered (Details blank)' : event.outcome === 'failed' ? 'Delivery failed' : `Not confirmed · ${event.details}`}</span></div><p className="mt-0.5 text-xs text-ink-3">{event.driver_name || 'Driver unavailable'}{event.document_id ? ` · Doc ${event.document_id}` : ''}{event.vehicle ? ` · ${event.vehicle}` : ''}</p></li>)}</ol>
       </article>;
     })}</div>
-    {!loading && !loadError && !grouped.length && <div className="rounded-xl border border-dashed border-line-strong bg-surface p-10 text-center text-sm text-ink-3"><Clock3 className="mx-auto mb-3 h-6 w-6"/>{query ? 'No matching invoices found in archived history.' : 'No invoice history yet. Refresh with a separate, clean report covering the last 30 days.'}</div>}
+    {!loading && !loadError && !grouped.length && <div className="rounded-xl border border-dashed border-line-strong bg-surface p-10 text-center text-sm text-ink-3"><Clock3 className="mx-auto mb-3 h-6 w-6"/>{query ? 'No matching invoices found in archived history.' : 'No invoice history yet. Import a separate report; any date range is accepted, and today’s rows are skipped.'}</div>}
   </div>;
 }
 
