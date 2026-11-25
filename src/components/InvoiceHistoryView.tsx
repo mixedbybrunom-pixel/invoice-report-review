@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { AlertCircle, CheckCircle2, ChevronRight, Clock3, Database, FileUp, Loader2, Search, XCircle } from 'lucide-react';
+import { AlertCircle, BarChart3, CheckCircle2, ChevronRight, Clock3, Database, FileUp, Loader2, Search, XCircle } from 'lucide-react';
 import { readReport } from '@/lib/workbook';
 import { INVOICE_RULES, isSuperstructInvoice, normalizeAccountKey } from '@/lib/rules';
 import { parseDeliveryDate } from '@/lib/drivers';
@@ -16,6 +16,7 @@ type ArchiveEvent = {
 };
 type ArchiveWrite = Omit<ArchiveEvent, 'event_key' | 'outcome'>;
 type ArchiveUpsert = ArchiveWrite & Pick<ArchiveEvent, 'event_key'>;
+type DriverArchiveEvent = Pick<ArchiveEvent, 'event_key' | 'invoice_no' | 'account_no' | 'delivery_date' | 'driver_name' | 'outcome'>;
 
 const str = (v: unknown) => String(v ?? '').trim();
 const isValidInvoice = (row: RawRow, invoice: string, account: string) =>
@@ -39,7 +40,13 @@ async function makeEventKey(row: Omit<ArchiveEvent, 'event_key' | 'outcome'>) {
 
 export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?: 'success' | 'error', detail?: string) => void }) {
   const [query, setQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'drivers'>('invoices');
   const [events, setEvents] = useState<ArchiveEvent[]>([]);
+  const [driverEvents, setDriverEvents] = useState<DriverArchiveEvent[]>([]);
+  const [driverQuery, setDriverQuery] = useState('');
+  const [driverLoading, setDriverLoading] = useState(false);
+  const [driverLoadError, setDriverLoadError] = useState('');
+  const [driverLoadedFor, setDriverLoadedFor] = useState<number | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<ArchiveEvent[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -70,6 +77,40 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
     return () => { active = false; window.clearTimeout(timer); };
   }, [query, refreshToken]);
 
+  useEffect(() => {
+    if (activeTab !== 'drivers' || driverLoadedFor === refreshToken) return;
+    let active = true;
+    const loadAllDriverEvents = async () => {
+      setDriverLoading(true);
+      setDriverLoadError('');
+      const all: DriverArchiveEvent[] = [];
+      const pageSize = 1000;
+      try {
+        for (let offset = 0; ; offset += pageSize) {
+          const { data, error } = await supabase
+            .from('invoice_archive_events')
+            .select('event_key, invoice_no, account_no, delivery_date, driver_name, outcome')
+            .order('delivery_date', { ascending: false })
+            .range(offset, offset + pageSize - 1);
+          if (error) throw error;
+          const page = (data ?? []) as DriverArchiveEvent[];
+          all.push(...page);
+          if (page.length < pageSize) break;
+        }
+        if (active) {
+          setDriverEvents(all);
+          setDriverLoadedFor(refreshToken);
+        }
+      } catch (error) {
+        if (active) setDriverLoadError(error instanceof Error ? error.message : 'Could not load archived delivery records.');
+      } finally {
+        if (active) setDriverLoading(false);
+      }
+    };
+    void loadAllDriverEvents();
+    return () => { active = false; };
+  }, [activeTab, driverLoadedFor, refreshToken]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, ArchiveEvent[]>();
     for (const event of events) {
@@ -78,6 +119,37 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
     }
     return [...map.values()].map((group) => group.sort((a, b) => b.delivery_date.localeCompare(a.delivery_date)));
   }, [events]);
+
+  const driverStats = useMemo(() => {
+    const byDriver = new Map<string, { deliveries: number; delivered: number; failed: number; unconfirmed: number; invoices: Set<string> }>();
+    for (const event of driverEvents) {
+      const name = event.driver_name.trim() || 'Driver unavailable';
+      const stats = byDriver.get(name) ?? { deliveries: 0, delivered: 0, failed: 0, unconfirmed: 0, invoices: new Set<string>() };
+      stats.deliveries += 1;
+      stats.invoices.add(`${event.account_no}\u0000${event.invoice_no}`);
+      if (event.outcome === 'delivered') stats.delivered += 1;
+      else if (event.outcome === 'failed') stats.failed += 1;
+      else stats.unconfirmed += 1;
+      byDriver.set(name, stats);
+    }
+    return [...byDriver.entries()]
+      .map(([name, stats]) => ({
+        name,
+        deliveries: stats.deliveries,
+        invoices: stats.invoices.size,
+        delivered: stats.delivered,
+        failed: stats.failed,
+        unconfirmed: stats.unconfirmed,
+        confirmed: stats.delivered + stats.failed,
+        rate: stats.delivered + stats.failed ? stats.delivered / (stats.delivered + stats.failed) : null,
+      }))
+      .sort((a, b) => b.deliveries - a.deliveries || a.name.localeCompare(b.name));
+  }, [driverEvents]);
+
+  const visibleDriverStats = useMemo(() => {
+    const q = driverQuery.trim().toLowerCase();
+    return driverStats.filter((driver) => !q || driver.name.toLowerCase().includes(q));
+  }, [driverStats, driverQuery]);
 
   const importReport = async (file: File) => {
     setUploading(true); setUploadError(''); setProgress('Reading report…');
@@ -140,6 +212,11 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
       </div>
       {(progress || uploadError) && <div className={`mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${uploadError ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300' : 'bg-accent-soft text-accent-ink'}`}>{uploadError ? <AlertCircle className="h-4 w-4 shrink-0"/> : <Loader2 className="h-4 w-4 animate-spin"/>}{progress || uploadError}</div>}
     </section>
+    <div role="tablist" aria-label="Invoice database views" className="flex w-fit gap-1 rounded-xl border border-line bg-surface p-1">
+      <button type="button" role="tab" aria-selected={activeTab === 'invoices'} onClick={() => setActiveTab('invoices')} className={`flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium ${activeTab === 'invoices' ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2'}`}><Search className="h-4 w-4"/>Invoices</button>
+      <button type="button" role="tab" aria-selected={activeTab === 'drivers'} onClick={() => setActiveTab('drivers')} className={`flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium ${activeTab === 'drivers' ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2'}`}><BarChart3 className="h-4 w-4"/>Driver analytics</button>
+    </div>
+    {activeTab === 'invoices' ? <>
     <label className="relative block"><Search className="absolute left-3 top-3 h-4 w-4 text-ink-3"/><input className="field pl-10" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search invoice number, account, or customer"/></label>
     {loadError && <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">{loadError}</div>}
     <div className="flex items-center gap-2 text-sm text-ink-2">{loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <Database className="h-4 w-4"/>}{grouped.length.toLocaleString()} invoice{grouped.length === 1 ? '' : 's'} shown{events.length === 200 ? ' · showing the latest 200 matches' : ''}</div>
@@ -205,6 +282,44 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
       </Modal>;
     })()}
     {!loading && !loadError && !grouped.length && <div className="rounded-xl border border-dashed border-line-strong bg-surface p-10 text-center text-sm text-ink-3"><Clock3 className="mx-auto mb-3 h-6 w-6"/>{query ? 'No matching invoices found in archived history.' : 'No invoice history yet. Import a separate report; any date range is accepted, and today’s rows are skipped.'}</div>}
+    </> : <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line p-5 md:p-6">
+        <div><h3 className="text-lg font-semibold">Driver analytics</h3><p className="mt-1 text-sm text-ink-2">Totals across all archived delivery records, grouped by driver.</p></div>
+        <label className="relative block w-full sm:max-w-xs"><Search className="absolute left-3 top-3 h-4 w-4 text-ink-3"/><input className="field pl-10" value={driverQuery} onChange={(event) => setDriverQuery(event.target.value)} placeholder="Find a driver" aria-label="Find a driver"/></label>
+      </div>
+      {driverLoadError && <div role="alert" className="m-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">{driverLoadError}</div>}
+      {driverLoading ? <div className="flex items-center gap-2 p-8 text-sm text-ink-2"><Loader2 className="h-4 w-4 animate-spin"/>Loading all archived delivery records…</div> : !driverLoadError && !driverEvents.length ? <div className="p-10 text-center text-sm text-ink-3"><Database className="mx-auto mb-3 h-6 w-6"/>Import invoice history to see driver analytics.</div> : !driverLoadError && <>
+        {(() => {
+          const totals = driverStats.reduce((sum, driver) => ({
+            deliveries: sum.deliveries + driver.deliveries,
+            invoices: sum.invoices + driver.invoices,
+            delivered: sum.delivered + driver.delivered,
+            failed: sum.failed + driver.failed,
+            unconfirmed: sum.unconfirmed + driver.unconfirmed,
+          }), { deliveries: 0, invoices: 0, delivered: 0, failed: 0, unconfirmed: 0 });
+          const confirmed = totals.delivered + totals.failed;
+          const rate = confirmed ? Math.round((totals.delivered / confirmed) * 100) : null;
+          return <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-4 md:p-6">
+            <div className="rounded-xl bg-surface-2 p-4"><p className="text-xs text-ink-3">Delivery records</p><p className="mt-1 text-2xl font-semibold">{totals.deliveries.toLocaleString()}</p></div>
+            <div className="rounded-xl bg-surface-2 p-4"><p className="text-xs text-ink-3">Drivers</p><p className="mt-1 text-2xl font-semibold">{driverStats.length.toLocaleString()}</p></div>
+            <div className="rounded-xl bg-surface-2 p-4"><p className="text-xs text-ink-3">Delivered</p><p className="mt-1 text-2xl font-semibold text-emerald-700 dark:text-emerald-300">{totals.delivered.toLocaleString()}</p></div>
+            <div className="rounded-xl bg-surface-2 p-4"><p className="text-xs text-ink-3">Confirmed delivery rate</p><p className="mt-1 text-2xl font-semibold">{rate == null ? '—' : `${rate}%`}</p><p className="mt-1 text-xs text-ink-3">{totals.failed.toLocaleString()} failed · {totals.unconfirmed.toLocaleString()} unconfirmed</p></div>
+          </div>;
+        })()}
+        <div className="border-t border-line px-5 py-3 text-xs text-ink-3">Rate is Delivered ÷ (Delivered + Failed); unconfirmed records are excluded. Counts are report events and may include multiple deliveries for one invoice.</div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] border-collapse text-sm">
+            <thead className="bg-surface-2 text-left text-xs text-ink-3"><tr>
+              <th className="px-5 py-3 font-medium">Driver</th><th className="px-4 py-3 text-right font-medium">Records</th><th className="px-4 py-3 text-right font-medium">Invoices</th><th className="px-4 py-3 text-right font-medium">Delivered</th><th className="px-4 py-3 text-right font-medium">Failed</th><th className="px-4 py-3 text-right font-medium">Unconfirmed</th><th className="px-5 py-3 text-right font-medium">Confirmed rate</th>
+            </tr></thead>
+            <tbody>{visibleDriverStats.map((driver) => <tr key={driver.name} className="border-t border-line hover:bg-surface-2/50">
+              <th scope="row" className="px-5 py-3 text-left font-medium">{driver.name}</th><td className="px-4 py-3 text-right tabular-nums">{driver.deliveries.toLocaleString()}</td><td className="px-4 py-3 text-right tabular-nums">{driver.invoices.toLocaleString()}</td><td className="px-4 py-3 text-right tabular-nums text-emerald-700 dark:text-emerald-300">{driver.delivered.toLocaleString()}</td><td className="px-4 py-3 text-right tabular-nums text-red-700 dark:text-red-300">{driver.failed.toLocaleString()}</td><td className="px-4 py-3 text-right tabular-nums">{driver.unconfirmed.toLocaleString()}</td><td className="px-5 py-3 text-right font-medium tabular-nums">{driver.rate == null ? '—' : `${Math.round(driver.rate * 100)}%`}</td>
+            </tr>)}</tbody>
+          </table>
+          {!visibleDriverStats.length && <p className="p-8 text-center text-sm text-ink-3">No drivers match “{driverQuery}”.</p>}
+        </div>
+      </>}
+    </section>}
   </div>;
 }
 
