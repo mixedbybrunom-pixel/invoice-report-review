@@ -65,7 +65,14 @@ export default function App() {
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [dark, setDark] = useState(loadTheme);
   const [colorTheme, setColorTheme] = useState<ColorTheme>(loadColorTheme);
-  const [view, setView] = useState<'invoices' | 'drivers' | 'history'>('invoices');
+  const [view, setView] = useState<'invoices' | 'drivers' | 'history'>(() => {
+    try {
+      const saved = sessionStorage.getItem('invoice-review-active-view-v1');
+      return saved === 'drivers' || saved === 'history' ? saved : 'invoices';
+    } catch {
+      return 'invoices';
+    }
+  });
   const [filter, setFilter] = useState<FilterKey>('needsaction');
   const [search, setSearch] = useState('');
   const [groupByAccount, setGroupByAccount] = useState(true);
@@ -151,6 +158,10 @@ export default function App() {
     });
     return () => { active = false; };
   }, [session]);
+
+  useEffect(() => {
+    try { sessionStorage.setItem('invoice-review-active-view-v1', view); } catch { /* Keep navigation usable when storage is unavailable. */ }
+  }, [view]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
