@@ -16,7 +16,32 @@ type ArchiveEvent = {
 };
 type ArchiveWrite = Omit<ArchiveEvent, 'event_key' | 'outcome'>;
 type ArchiveUpsert = ArchiveWrite & Pick<ArchiveEvent, 'event_key'>;
-type DriverArchiveEvent = Pick<ArchiveEvent, 'event_key' | 'invoice_no' | 'account_no' | 'delivery_date' | 'driver_name' | 'outcome'>;
+type DriverStats = {
+  driver_name: string;
+  delivery_records: number;
+  invoices: number;
+  delivered: number;
+  failed: number;
+  unconfirmed: number;
+};
+
+const DRIVER_STATS_CACHE_KEY = 'invoice-db-driver-stats-v1';
+const DRIVER_STATS_CACHE_TTL = 10 * 60 * 1000;
+
+function readDriverStatsCache(): { stats: DriverStats[]; savedAt: number } | null {
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(DRIVER_STATS_CACHE_KEY) ?? 'null') as { stats?: DriverStats[]; savedAt?: number } | null;
+    if (!cached || !Array.isArray(cached.stats) || typeof cached.savedAt !== 'number' || Date.now() - cached.savedAt > DRIVER_STATS_CACHE_TTL) return null;
+    return { stats: cached.stats, savedAt: cached.savedAt };
+  } catch {
+    return null;
+  }
+}
+
+function readActiveTab(): 'invoices' | 'drivers' {
+  try { return sessionStorage.getItem('invoice-db-active-tab') === 'drivers' ? 'drivers' : 'invoices'; }
+  catch { return 'invoices'; }
+}
 
 const str = (v: unknown) => String(v ?? '').trim();
 const isValidInvoice = (row: RawRow, invoice: string, account: string) =>
@@ -39,14 +64,16 @@ async function makeEventKey(row: Omit<ArchiveEvent, 'event_key' | 'outcome'>) {
 }
 
 export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?: 'success' | 'error', detail?: string) => void }) {
+  const initialDriverCache = readDriverStatsCache();
   const [query, setQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'invoices' | 'drivers'>('invoices');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'drivers'>(readActiveTab);
   const [events, setEvents] = useState<ArchiveEvent[]>([]);
-  const [driverEvents, setDriverEvents] = useState<DriverArchiveEvent[]>([]);
+  const [driverStats, setDriverStats] = useState<DriverStats[]>(initialDriverCache?.stats ?? []);
   const [driverQuery, setDriverQuery] = useState('');
   const [driverLoading, setDriverLoading] = useState(false);
   const [driverLoadError, setDriverLoadError] = useState('');
-  const [driverLoadedFor, setDriverLoadedFor] = useState<number | null>(null);
+  const [driverLoadedFor, setDriverLoadedFor] = useState<string | null>(initialDriverCache ? '0:0' : null);
+  const [driverRefreshToken, setDriverRefreshToken] = useState(0);
   const [selectedInvoice, setSelectedInvoice] = useState<ArchiveEvent[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -55,6 +82,10 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
   const [uploadError, setUploadError] = useState('');
   const [refreshToken, setRefreshToken] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    try { sessionStorage.setItem('invoice-db-active-tab', activeTab); } catch { /* Keep navigation usable when storage is unavailable. */ }
+  }, [activeTab]);
 
   useEffect(() => {
     let active = true;
@@ -78,28 +109,20 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
   }, [query, refreshToken]);
 
   useEffect(() => {
-    if (activeTab !== 'drivers' || driverLoadedFor === refreshToken) return;
+    const loadKey = `${refreshToken}:${driverRefreshToken}`;
+    if (activeTab !== 'drivers' || driverLoadedFor === loadKey) return;
     let active = true;
     const loadAllDriverEvents = async () => {
       setDriverLoading(true);
       setDriverLoadError('');
-      const all: DriverArchiveEvent[] = [];
-      const pageSize = 1000;
       try {
-        for (let offset = 0; ; offset += pageSize) {
-          const { data, error } = await supabase
-            .from('invoice_archive_events')
-            .select('event_key, invoice_no, account_no, delivery_date, driver_name, outcome')
-            .order('delivery_date', { ascending: false })
-            .range(offset, offset + pageSize - 1);
-          if (error) throw error;
-          const page = (data ?? []) as DriverArchiveEvent[];
-          all.push(...page);
-          if (page.length < pageSize) break;
-        }
+        const { data, error } = await supabase.rpc('invoice_archive_driver_stats');
+        if (error) throw error;
         if (active) {
-          setDriverEvents(all);
-          setDriverLoadedFor(refreshToken);
+          const summary = (data ?? []) as DriverStats[];
+          setDriverStats(summary);
+          try { sessionStorage.setItem(DRIVER_STATS_CACHE_KEY, JSON.stringify({ stats: summary, savedAt: Date.now() })); } catch { /* Session storage can be unavailable in private browsing. */ }
+          setDriverLoadedFor(loadKey);
         }
       } catch (error) {
         if (active) setDriverLoadError(error instanceof Error ? error.message : 'Could not load archived delivery records.');
@@ -109,7 +132,7 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
     };
     void loadAllDriverEvents();
     return () => { active = false; };
-  }, [activeTab, driverLoadedFor, refreshToken]);
+  }, [activeTab, driverLoadedFor, driverRefreshToken, refreshToken]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, ArchiveEvent[]>();
@@ -120,36 +143,22 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
     return [...map.values()].map((group) => group.sort((a, b) => b.delivery_date.localeCompare(a.delivery_date)));
   }, [events]);
 
-  const driverStats = useMemo(() => {
-    const byDriver = new Map<string, { deliveries: number; delivered: number; failed: number; unconfirmed: number; invoices: Set<string> }>();
-    for (const event of driverEvents) {
-      const name = event.driver_name.trim() || 'Driver unavailable';
-      const stats = byDriver.get(name) ?? { deliveries: 0, delivered: 0, failed: 0, unconfirmed: 0, invoices: new Set<string>() };
-      stats.deliveries += 1;
-      stats.invoices.add(`${event.account_no}\u0000${event.invoice_no}`);
-      if (event.outcome === 'delivered') stats.delivered += 1;
-      else if (event.outcome === 'failed') stats.failed += 1;
-      else stats.unconfirmed += 1;
-      byDriver.set(name, stats);
-    }
-    return [...byDriver.entries()]
-      .map(([name, stats]) => ({
-        name,
-        deliveries: stats.deliveries,
-        invoices: stats.invoices.size,
-        delivered: stats.delivered,
-        failed: stats.failed,
-        unconfirmed: stats.unconfirmed,
-        confirmed: stats.delivered + stats.failed,
-        rate: stats.delivered + stats.failed ? stats.delivered / (stats.delivered + stats.failed) : null,
-      }))
-      .sort((a, b) => b.deliveries - a.deliveries || a.name.localeCompare(b.name));
-  }, [driverEvents]);
+  const driverRows = useMemo(() => {
+    return driverStats.map((driver) => ({
+      name: driver.driver_name,
+      deliveries: Number(driver.delivery_records),
+      invoices: Number(driver.invoices),
+      delivered: Number(driver.delivered),
+      failed: Number(driver.failed),
+      unconfirmed: Number(driver.unconfirmed),
+      rate: Number(driver.delivered) + Number(driver.failed) ? Number(driver.delivered) / (Number(driver.delivered) + Number(driver.failed)) : null,
+    })).sort((a, b) => b.deliveries - a.deliveries || a.name.localeCompare(b.name));
+  }, [driverStats]);
 
   const visibleDriverStats = useMemo(() => {
     const q = driverQuery.trim().toLowerCase();
-    return driverStats.filter((driver) => !q || driver.name.toLowerCase().includes(q));
-  }, [driverStats, driverQuery]);
+    return driverRows.filter((driver) => !q || driver.name.toLowerCase().includes(q));
+  }, [driverRows, driverQuery]);
 
   const importReport = async (file: File) => {
     setUploading(true); setUploadError(''); setProgress('Reading report…');
@@ -285,12 +294,15 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
     </> : <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line p-5 md:p-6">
         <div><h3 className="text-lg font-semibold">Driver analytics</h3><p className="mt-1 text-sm text-ink-2">Totals across all archived delivery records, grouped by driver.</p></div>
-        <label className="relative block w-full sm:max-w-xs"><Search className="absolute left-3 top-3 h-4 w-4 text-ink-3"/><input className="field pl-10" value={driverQuery} onChange={(event) => setDriverQuery(event.target.value)} placeholder="Find a driver" aria-label="Find a driver"/></label>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:flex-nowrap">
+          <label className="relative block min-w-[180px] flex-1 sm:max-w-xs"><Search className="absolute left-3 top-3 h-4 w-4 text-ink-3"/><input className="field pl-10" value={driverQuery} onChange={(event) => setDriverQuery(event.target.value)} placeholder="Find a driver" aria-label="Find a driver"/></label>
+          <button type="button" onClick={() => setDriverRefreshToken((token) => token + 1)} disabled={driverLoading} className="btn-secondary h-10">{driverLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : <Database className="h-4 w-4"/>}Refresh</button>
+        </div>
       </div>
       {driverLoadError && <div role="alert" className="m-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">{driverLoadError}</div>}
-      {driverLoading ? <div className="flex items-center gap-2 p-8 text-sm text-ink-2"><Loader2 className="h-4 w-4 animate-spin"/>Loading all archived delivery records…</div> : !driverLoadError && !driverEvents.length ? <div className="p-10 text-center text-sm text-ink-3"><Database className="mx-auto mb-3 h-6 w-6"/>Import invoice history to see driver analytics.</div> : !driverLoadError && <>
+      {driverLoading ? <div className="flex items-center gap-2 p-8 text-sm text-ink-2"><Loader2 className="h-4 w-4 animate-spin"/>Loading driver summary…</div> : !driverLoadError && !driverStats.length ? <div className="p-10 text-center text-sm text-ink-3"><Database className="mx-auto mb-3 h-6 w-6"/>Import invoice history to see driver analytics.</div> : !driverLoadError && <>
         {(() => {
-          const totals = driverStats.reduce((sum, driver) => ({
+          const totals = driverRows.reduce((sum, driver) => ({
             deliveries: sum.deliveries + driver.deliveries,
             invoices: sum.invoices + driver.invoices,
             delivered: sum.delivered + driver.delivered,
@@ -301,7 +313,7 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
           const rate = confirmed ? Math.round((totals.delivered / confirmed) * 100) : null;
           return <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-4 md:p-6">
             <div className="rounded-xl bg-surface-2 p-4"><p className="text-xs text-ink-3">Delivery records</p><p className="mt-1 text-2xl font-semibold">{totals.deliveries.toLocaleString()}</p></div>
-            <div className="rounded-xl bg-surface-2 p-4"><p className="text-xs text-ink-3">Drivers</p><p className="mt-1 text-2xl font-semibold">{driverStats.length.toLocaleString()}</p></div>
+            <div className="rounded-xl bg-surface-2 p-4"><p className="text-xs text-ink-3">Drivers</p><p className="mt-1 text-2xl font-semibold">{driverRows.length.toLocaleString()}</p></div>
             <div className="rounded-xl bg-surface-2 p-4"><p className="text-xs text-ink-3">Delivered</p><p className="mt-1 text-2xl font-semibold text-emerald-700 dark:text-emerald-300">{totals.delivered.toLocaleString()}</p></div>
             <div className="rounded-xl bg-surface-2 p-4"><p className="text-xs text-ink-3">Confirmed delivery rate</p><p className="mt-1 text-2xl font-semibold">{rate == null ? '—' : `${rate}%`}</p><p className="mt-1 text-xs text-ink-3">{totals.failed.toLocaleString()} failed · {totals.unconfirmed.toLocaleString()} unconfirmed</p></div>
           </div>;
