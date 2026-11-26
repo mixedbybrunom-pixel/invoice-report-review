@@ -24,15 +24,16 @@ type DriverStats = {
   failed: number;
   unconfirmed: number;
 };
+type MonthlyDriverStats = DriverStats & { month_start: string };
 
-const DRIVER_STATS_CACHE_KEY = 'invoice-db-driver-stats-v1';
+const DRIVER_STATS_CACHE_KEY = 'invoice-db-driver-stats-v2';
 const DRIVER_STATS_CACHE_TTL = 10 * 60 * 1000;
 
-function readDriverStatsCache(): { stats: DriverStats[]; savedAt: number } | null {
+function readDriverStatsCache(): { stats: DriverStats[]; monthly: MonthlyDriverStats[]; savedAt: number } | null {
   try {
-    const cached = JSON.parse(sessionStorage.getItem(DRIVER_STATS_CACHE_KEY) ?? 'null') as { stats?: DriverStats[]; savedAt?: number } | null;
-    if (!cached || !Array.isArray(cached.stats) || typeof cached.savedAt !== 'number' || Date.now() - cached.savedAt > DRIVER_STATS_CACHE_TTL) return null;
-    return { stats: cached.stats, savedAt: cached.savedAt };
+    const cached = JSON.parse(sessionStorage.getItem(DRIVER_STATS_CACHE_KEY) ?? 'null') as { stats?: DriverStats[]; monthly?: MonthlyDriverStats[]; savedAt?: number } | null;
+    if (!cached || !Array.isArray(cached.stats) || !Array.isArray(cached.monthly) || typeof cached.savedAt !== 'number' || Date.now() - cached.savedAt > DRIVER_STATS_CACHE_TTL) return null;
+    return { stats: cached.stats, monthly: cached.monthly, savedAt: cached.savedAt };
   } catch {
     return null;
   }
@@ -69,6 +70,7 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
   const [activeTab, setActiveTab] = useState<'invoices' | 'drivers'>(readActiveTab);
   const [events, setEvents] = useState<ArchiveEvent[]>([]);
   const [driverStats, setDriverStats] = useState<DriverStats[]>(initialDriverCache?.stats ?? []);
+  const [monthlyDriverStats, setMonthlyDriverStats] = useState<MonthlyDriverStats[]>(initialDriverCache?.monthly ?? []);
   const [driverQuery, setDriverQuery] = useState('');
   const [driverLoading, setDriverLoading] = useState(false);
   const [driverLoadError, setDriverLoadError] = useState('');
@@ -116,12 +118,18 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
       setDriverLoading(true);
       setDriverLoadError('');
       try {
-        const { data, error } = await supabase.rpc('invoice_archive_driver_stats');
-        if (error) throw error;
+        const [overallResult, monthlyResult] = await Promise.all([
+          supabase.rpc('invoice_archive_driver_stats'),
+          supabase.rpc('invoice_archive_monthly_driver_stats'),
+        ]);
+        if (overallResult.error) throw overallResult.error;
+        if (monthlyResult.error) throw monthlyResult.error;
         if (active) {
-          const summary = (data ?? []) as DriverStats[];
+          const summary = (overallResult.data ?? []) as DriverStats[];
+          const monthly = (monthlyResult.data ?? []) as MonthlyDriverStats[];
           setDriverStats(summary);
-          try { sessionStorage.setItem(DRIVER_STATS_CACHE_KEY, JSON.stringify({ stats: summary, savedAt: Date.now() })); } catch { /* Session storage can be unavailable in private browsing. */ }
+          setMonthlyDriverStats(monthly);
+          try { sessionStorage.setItem(DRIVER_STATS_CACHE_KEY, JSON.stringify({ stats: summary, monthly, savedAt: Date.now() })); } catch { /* Session storage can be unavailable in private browsing. */ }
           setDriverLoadedFor(loadKey);
         }
       } catch (error) {
@@ -159,6 +167,23 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
     const q = driverQuery.trim().toLowerCase();
     return driverRows.filter((driver) => !q || driver.name.toLowerCase().includes(q));
   }, [driverRows, driverQuery]);
+
+  const monthlyDriverRows = useMemo(() => monthlyDriverStats.map((driver) => ({
+    month: driver.month_start,
+    name: driver.driver_name,
+    deliveries: Number(driver.delivery_records),
+    invoices: Number(driver.invoices),
+    delivered: Number(driver.delivered),
+    failed: Number(driver.failed),
+    unconfirmed: Number(driver.unconfirmed),
+    rate: Number(driver.delivered) + Number(driver.failed) ? Number(driver.delivered) / (Number(driver.delivered) + Number(driver.failed)) : null,
+  })).filter((driver) => !driverQuery.trim() || driver.name.toLowerCase().includes(driverQuery.trim().toLowerCase())), [monthlyDriverStats, driverQuery]);
+
+  const monthlyGroups = useMemo(() => {
+    const groups = new Map<string, typeof monthlyDriverRows>();
+    for (const driver of monthlyDriverRows) groups.set(driver.month, [...(groups.get(driver.month) ?? []), driver]);
+    return [...groups.entries()];
+  }, [monthlyDriverRows]);
 
   const importReport = async (file: File) => {
     setUploading(true); setUploadError(''); setProgress('Reading report…');
@@ -319,6 +344,27 @@ export function InvoiceHistoryView({ notify }: { notify: (message: string, kind?
           </div>;
         })()}
         <div className="border-t border-line px-5 py-3 text-xs text-ink-3">Rate is Delivered ÷ (Delivered + Failed); unconfirmed records are excluded. Counts are report events and may include multiple deliveries for one invoice.</div>
+        <section className="border-t border-line p-5 md:p-6">
+          <div className="mb-4"><h4 className="font-semibold">Monthly best drivers</h4><p className="mt-1 text-xs text-ink-3">Ranked by delivered records in each month. Ties are shown together; confirmed delivery rate is included for context.</p></div>
+          {!monthlyGroups.length ? <p className="text-sm text-ink-3">No monthly delivery records available.</p> : <div className="grid gap-3 md:grid-cols-2">
+            {monthlyGroups.map(([month, drivers]) => {
+              const highestDelivered = Math.max(...drivers.map((driver) => driver.delivered));
+              const leaders = drivers.filter((driver) => driver.delivered === highestDelivered && highestDelivered > 0);
+              const label = new Date(`${month}T00:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+              return <article key={month} className="rounded-xl border border-line bg-surface-2/50 p-4">
+                <h5 className="text-sm font-semibold">{label}</h5>
+                {leaders.length ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <div><p className="text-xs text-ink-3">{leaders.length > 1 ? 'Joint monthly leaders' : 'Best driver'}</p><p className="mt-0.5 font-medium">{leaders.map((driver) => driver.name).join(', ')}</p></div>
+                  <div className="text-right"><p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">{highestDelivered.toLocaleString()} delivered</p>{leaders.length === 1 && <p className="text-xs text-ink-3">{leaders[0].rate == null ? 'No confirmed rate' : `${Math.round(leaders[0].rate * 100)}% confirmed rate`}</p>}</div>
+                </div> : <p className="mt-3 text-sm text-ink-3">No confirmed deliveries this month.</p>}
+                <details className="mt-3 border-t border-line pt-2">
+                  <summary className="cursor-pointer text-xs font-medium text-ink-2">Show all {drivers.length} drivers this month</summary>
+                  <div className="mt-2 overflow-x-auto"><table className="w-full min-w-[420px] text-xs"><thead><tr className="text-left text-ink-3"><th className="py-2 font-medium">Driver</th><th className="px-2 py-2 text-right font-medium">Delivered</th><th className="px-2 py-2 text-right font-medium">Failed</th><th className="py-2 text-right font-medium">Rate</th></tr></thead><tbody>{drivers.map((driver) => <tr key={driver.name} className="border-t border-line"><th className="py-2 text-left font-medium">{driver.name}{driver.delivered === highestDelivered && highestDelivered > 0 ? ' ★' : ''}</th><td className="px-2 py-2 text-right tabular-nums">{driver.delivered.toLocaleString()}</td><td className="px-2 py-2 text-right tabular-nums">{driver.failed.toLocaleString()}</td><td className="py-2 text-right tabular-nums">{driver.rate == null ? '—' : `${Math.round(driver.rate * 100)}%`}</td></tr>)}</tbody></table></div>
+                </details>
+              </article>;
+            })}
+          </div>}
+        </section>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] border-collapse text-sm">
             <thead className="bg-surface-2 text-left text-xs text-ink-3"><tr>
